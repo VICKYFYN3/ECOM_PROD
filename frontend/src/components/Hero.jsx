@@ -11,7 +11,7 @@ const Hero = () => {
 
     return (
         <div className="container mx-auto">
-            <div className="flex flex-col sm:flex-row border min-h-[600px] border-gray-400">
+            <div className="flex flex-col sm:flex-row border min-h-[450px] border-gray-400">
                 {/* HERO LEFT SIDE */}
                 <div className="w-full sm:w-1/2 flex items-center justify-center py-10 sm:py-0 bg-gradient-to-br from-white to-gray-100">
                     <div className="text-[#414141] max-w-md px-8">
@@ -41,11 +41,11 @@ const Hero = () => {
                 </div>
 
                 {/* HERO RIGHT SIDE */}
-                <div className="w-full sm:w-1/2 relative overflow-hidden min-h-[600px] sm:min-h-full">
+                <div className="w-full sm:w-1/2 relative overflow-hidden min-h-[450px] sm:min-h-full">
                     <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent z-10"></div>
                     
                     <img 
-                        className="w-full h-full min-h-[600px] sm:min-h-full object-cover object-center" 
+                        className="w-full h-full min-h-[450px] sm:min-h-full object-cover object-center" 
                         src={assets.hero_img} 
                         alt="Latest arrivals hero image" 
                     />

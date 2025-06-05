@@ -3,68 +3,369 @@ import { ShopContext } from '../context/ShopContext';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
+import { Eye, EyeOff, Mail, Lock, Key } from 'lucide-react';
+
+const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
 const Login = () => {
+  const [currentState, setCurrentState] = useState('Login');
+  const { token, setToken, backendURL } = useContext(ShopContext);
+  const navigate = useNavigate();
 
-const [currentState, setCurrentState] = useState('Login');
-const { token, setToken, backendURL } = useContext(ShopContext);
-const navigate = useNavigate(); 
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    confirmPassword: ''
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [resetStep, setResetStep] = useState('email'); // 'email' or 'token'
 
-  const [name,setName] = useState('')
-  const [password,setPassword] = useState('')
-  const [email,setEmail] = useState('')
-    const onSubmitHandler = async(event) => {
-      event.preventDefault()
-      try {
-        if(currentState === 'Sign Up'){
-          const response = await axios.post(backendURL + '/api/user/register', {name,email,password})
-          if(response.data.success){
-            setToken(response.data.token)
-            localStorage.setItem('token',response.data.token)
-          }else{
-            toast.error(response.data.message)
-          }
-        }else{
-          const response = await axios.post(backendURL + '/api/user/login', {email,password})
-          if(response.data.success){
-            setToken(response.data.token)
-            localStorage.setItem('token',response.data.token)
-          }else{
-            toast.error(response.data.message)
-          }
-          
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const onSubmitHandler = async (event) => {
+    event.preventDefault();
+    try {
+      if (currentState === 'Sign Up') {
+        if (formData.password !== formData.confirmPassword) {
+          toast.error("Passwords don't match");
+          return;
         }
-      } catch (error) {
-        console.log(error);
-        toast.error(error.message)
-        
+        const response = await axios.post(backendURL + '/api/user/register', {
+          name: formData.name,
+          email: formData.email,
+          password: formData.password
+        });
+        if (response.data.success) {
+          setToken(response.data.token);
+          localStorage.setItem('token', response.data.token);
+          toast.success("Registration successful!");
+        } else {
+          toast.error(response.data.message);
+        }
+      } else {
+        const response = await axios.post(backendURL + '/api/user/login', {
+          email: formData.email,
+          password: formData.password
+        });
+        if (response.data.success) {
+          setToken(response.data.token);
+          localStorage.setItem('token', response.data.token);
+          toast.success("Login successful!");
+        } else {
+          toast.error(response.data.message);
+        }
       }
+    } catch (error) {
+      console.log(error);
+      toast.error(error.response?.data?.message || error.message);
     }
-    useEffect(()=>{
-      if(token){
-        navigate('/')
+  };
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    try {
+      const response = await axios.post(backendURL + '/api/user/google-auth', {
+        token: credentialResponse.credential
+      });
+      if (response.data.success) {
+        setToken(response.data.token);
+        localStorage.setItem('token', response.data.token);
+        toast.success("Google authentication successful!");
+      } else {
+        toast.error(response.data.message);
       }
-    },[token])
+    } catch (error) {
+      console.log(error);
+      toast.error(error.response?.data?.message || "Google authentication failed");
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    try {
+      if (!forgotPasswordEmail) {
+        toast.error("Please enter your email");
+        return;
+      }
+      const response = await axios.post(backendURL + '/api/user/forgot-password', {
+        email: forgotPasswordEmail
+      });
+      if (response.data.success) {
+        toast.success("Reset code sent to your email!");
+        setResetStep('token');
+      } else {
+        toast.error(response.data.message);
+      }
+    } catch (error) {
+      console.log(error);
+      toast.error(error.response?.data?.message || error.message);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    try {
+      if (!newPassword || !resetToken) {
+        toast.error("Please enter the reset code and new password");
+        return;
+      }
+      if (newPassword.length < 8) {
+        toast.error("Password must be at least 8 characters");
+        return;
+      }
+      const response = await axios.post(backendURL + '/api/user/reset-password', {
+        token: resetToken,
+        newPassword
+      });
+      if (response.data.success) {
+        toast.success("Password reset successful! You can now login.");
+        setResetToken('');
+        setNewPassword('');
+        setForgotPasswordEmail('');
+        setResetStep('email');
+        setCurrentState('Login');
+      } else {
+        toast.error(response.data.message);
+      }
+    } catch (error) {
+      console.log(error);
+      toast.error(error.response?.data?.message || error.message);
+    }
+  };
+
+  const resetPasswordFlow = () => {
+    setResetToken('');
+    setNewPassword('');
+    setForgotPasswordEmail('');
+    setResetStep('email');
+  };
+
+  useEffect(() => {
+    if (token) {
+      navigate('/');
+    }
+  }, [token]);
+
   return (
-    <form onSubmit={onSubmitHandler} className='flex flex-col items-center w-[90%] sm:max-w-96 m-auto mt-14 gap-4 text-gray-800'>
-      <div className='inline-flex items-center gap-2 mb-2 mt-10'>
-        <p className='prata-regular text-3xl'>{currentState}</p>
-        <hr className='border-none h-[1.5px] w-8 bg-gray-800'/>
-      </div>
-      {currentState === 'Login' ? '' :<input onChange={(e)=>setName(e.target.value)} value={name}  type="text" className='w-full px-3 py-2 border border-gray-800' placeholder='Name' required/>}
-      <input onChange={(e)=>setEmail(e.target.value)} value={email} type="email" className='w-full px-3 py-2 border border-gray-800' placeholder='Email' required/>
-      <input onChange={(e)=>setPassword(e.target.value)} value={password}  type="password" className='w-full px-3 py-2 border border-gray-800' placeholder='Password' required/>
-      <div className='w-full flex justify-between text-sm mt-[-8px]'>
-        <p className='cursor-pointer'>Forgot your Password?</p>
-        {
-          currentState === 'Login'
-          ? <p className='cursor-pointer' onClick={() => setCurrentState('Sign Up')}>Create an account</p>
-          : <p className='cursor-pointer' onClick={() => setCurrentState('Login')}>Already have an account?</p>
-        }
-      </div>
-      <button className='bg-black text-white font-light px-8 py-2 mt-4 cursor-pointer'>{currentState === 'Login' ? 'Sign In' : 'Sign Up'}</button>
-    </form>
+    <div className='flex flex-col items-center w-[90%] sm:max-w-96 m-auto mt-14 gap-4 text-gray-800'>
+      {forgotPasswordEmail !== '' ? (
+        <div className='w-full'>
+          <div className='inline-flex items-center gap-2 mb-2 mt-10'>
+            <p className='prata-regular text-3xl'>Reset Password</p>
+            <hr className='border-none h-[1.5px] w-8 bg-gray-800'/>
+          </div>
+          
+          {resetStep === 'email' ? (
+            // Email input step
+            <div className='space-y-4'>
+              <div className='relative'>
+                <Mail className='absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400' size={18} />
+                <input
+                  type="email"
+                  value={forgotPasswordEmail}
+                  onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                  className='w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-black transition-colors'
+                  placeholder='Enter your email address'
+                  required
+                />
+              </div>
+              <button 
+                onClick={handleForgotPassword}
+                className='bg-black text-white font-light px-8 py-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer w-full'
+              >
+                Send Reset Code
+              </button>
+            </div>
+          ) : (
+            // Token and new password input step
+            <div className='space-y-4'>
+              <div className='bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4'>
+                <div className='flex items-center gap-2 mb-2'>
+                  <Key size={16} className='text-blue-600' />
+                  <p className='text-sm font-medium text-blue-800'>Check your email</p>
+                </div>
+                <p className='text-sm text-blue-700'>
+                  We've sent a 6-digit reset code to <strong>{forgotPasswordEmail}</strong>
+                </p>
+              </div>
+              
+              <div className='relative'>
+                <Key className='absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400' size={18} />
+                <input
+                  type="text"
+                  value={resetToken}
+                  onChange={(e) => setResetToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  className='w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-black transition-colors text-center text-xl tracking-widest font-mono'
+                  placeholder='000000'
+                  maxLength="6"
+                  required
+                />
+              </div>
+              
+              <div className='relative'>
+                <Lock className='absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400' size={18} />
+                <input
+                  type={showNewPassword ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className='w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-black transition-colors'
+                  placeholder='New Password (min 8 characters)'
+                  required
+                />
+                <button
+                  type="button"
+                  className='absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600'
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                >
+                  {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+              
+              <button 
+                onClick={handleResetPassword}
+                className='bg-black text-white font-light px-8 py-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer w-full'
+              >
+                Reset Password
+              </button>
+              
+              <button 
+                type="button"
+                onClick={() => setResetStep('email')}
+                className='text-sm text-gray-600 hover:text-black transition-colors w-full text-center'
+              >
+                Didn't receive the code? Try again
+              </button>
+            </div>
+          )}
+          
+          <p 
+            className='cursor-pointer text-sm mt-6 text-center text-gray-600 hover:text-black transition-colors'
+            onClick={resetPasswordFlow}
+          >
+            ← Back to Login
+          </p>
+        </div>
+      ) : (
+        <form onSubmit={onSubmitHandler} className='w-full'>
+          <div className='inline-flex items-center gap-2 mb-2 mt-10'>
+            <p className='prata-regular text-3xl'>{currentState}</p>
+            <hr className='border-none h-[1.5px] w-8 bg-gray-800'/>
+          </div>
+          
+          {currentState === 'Sign Up' && (
+            <input
+              name="name"
+              onChange={handleChange}
+              value={formData.name}
+              type="text"
+              className='w-full px-3 py-2 border border-gray-800 mb-4'
+              placeholder='Name'
+              required
+            />
+          )}
+          
+          <input
+            name="email"
+            onChange={handleChange}
+            value={formData.email}
+            type="email"
+            className='w-full px-3 py-2 border border-gray-800 mb-4'
+            placeholder='Email'
+            required
+          />
+          
+          <div className='relative mb-4'>
+            <input
+              name="password"
+              onChange={handleChange}
+              value={formData.password}
+              type={showPassword ? "text" : "password"}
+              className='w-full px-3 py-2 border border-gray-800'
+              placeholder='Password'
+              required
+            />
+            <button
+              type="button"
+              className='absolute right-3 top-1/2 transform -translate-y-1/2'
+              onClick={() => setShowPassword(!showPassword)}
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+          
+          {currentState === 'Sign Up' && (
+            <div className='relative mb-4'>
+              <input
+                name="confirmPassword"
+                onChange={handleChange}
+                value={formData.confirmPassword}
+                type={showConfirmPassword ? "text" : "password"}
+                className='w-full px-3 py-2 border border-gray-800'
+                placeholder='Confirm Password'
+                required
+              />
+              <button
+                type="button"
+                className='absolute right-3 top-1/2 transform -translate-y-1/2'
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+              >
+                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+          )}
+          
+          <div className='w-full flex justify-between text-sm mt-[-8px] mb-4'>
+            <p 
+              className='cursor-pointer hover:text-black transition-colors'
+              onClick={() => setForgotPasswordEmail(' ')}
+            >
+              Forgot your Password?
+            </p>
+            {
+              currentState === 'Login'
+              ? <p className='cursor-pointer hover:text-black transition-colors' onClick={() => setCurrentState('Sign Up')}>Create an account</p>
+              : <p className='cursor-pointer hover:text-black transition-colors' onClick={() => setCurrentState('Login')}>Already have an account?</p>
+            }
+          </div>
+          
+          <button 
+            type="submit"
+            className='bg-black text-white font-light px-8 py-2 mt-4 cursor-pointer w-full hover:bg-gray-800 transition-colors'
+          >
+            {currentState === 'Login' ? 'Sign In' : 'Sign Up'}
+          </button>
+          
+          <div className='flex items-center my-4'>
+            <hr className='flex-grow border-t border-gray-300'/>
+            <span className='px-3 text-gray-500'>or</span>
+            <hr className='flex-grow border-t border-gray-300'/>
+          </div>
+          
+          <GoogleOAuthProvider clientId={clientId}>
+            <div className='flex justify-center'>
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() => {
+                  toast.error("Google login failed");
+                }}
+                useOneTap
+              />
+            </div>
+          </GoogleOAuthProvider>
+        </form>
+      )}
+    </div>
   )
 }
 
-export default Login
+export default Login;

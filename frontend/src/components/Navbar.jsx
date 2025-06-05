@@ -10,6 +10,9 @@ const Navbar = () => {
     const { setShowSearch, getCartCount, token, setToken, setCartItems } = useContext(ShopContext);
     const navigate = useNavigate();
 
+    // Check if current page is collection page
+    const isCollectionPage = location.pathname === '/collection';
+
     // Close mobile menu when location changes
     useEffect(() => {
         setVisible(false);
@@ -60,11 +63,13 @@ const Navbar = () => {
 
                 {/* Right Side Icons - with unique animated indicators */}
                 <div className='flex items-center gap-6'>
-                    {/* Search with ripple effect */}
-                    <div className="relative cursor-pointer group" onClick={() => setShowSearch(true)}>
-                        <div className="absolute inset-0 rounded-full bg-purple-200 scale-0 group-hover:scale-150 opacity-0 group-hover:opacity-30 transition-all duration-500"></div>
-                        <img src={assets.search_icon} className='w-5 relative transform group-hover:rotate-12 transition-transform duration-300' alt="" />
-                    </div>
+                    {/* Search with ripple effect - only show on collection page */}
+                    {isCollectionPage && (
+                        <div className="relative cursor-pointer group" onClick={() => setShowSearch(true)}>
+                            <div className="absolute inset-0 rounded-full bg-purple-200 scale-0 group-hover:scale-150 opacity-0 group-hover:opacity-30 transition-all duration-500"></div>
+                            <img src={assets.search_icon} className='w-5 relative transform group-hover:rotate-12 transition-transform duration-300' alt="" />
+                        </div>
+                    )}
 
                     {/* Profile dropdown - redesigned */}
                     <div className='group relative'>
@@ -123,7 +128,8 @@ const Navbar = () => {
                                     { path: '/', label: 'HOME' },
                                     { path: '/collection', label: 'COLLECTION' },
                                     { path: '/about', label: 'ABOUT' },
-                                    { path: '/contact', label: 'CONTACT' }
+                                    { path: '/contact', label: 'CONTACT' },
+                                    { path: '/orders', label: 'ORDERS' }
                                 ].map((item) => (
                                     <NavLink 
                                         key={item.path}
@@ -151,12 +157,15 @@ const Navbar = () => {
                                         <span>Profile</span>
                                     </div>
                                     
-                                    <div className="flex flex-col items-center gap-1 text-xs text-gray-500">
-                                        <div className="w-10 h-10 rounded-full bg-pink-100 flex items-center justify-center text-pink-600" onClick={() => setShowSearch(true)}>
-                                            <img src={assets.search_icon} className="w-5" alt="" />
+                                    {/* Search icon in mobile menu - only show on collection page */}
+                                    {isCollectionPage && (
+                                        <div className="flex flex-col items-center gap-1 text-xs text-gray-500">
+                                            <div className="w-10 h-10 rounded-full bg-pink-100 flex items-center justify-center text-pink-600" onClick={() => setShowSearch(true)}>
+                                                <img src={assets.search_icon} className="w-5" alt="" />
+                                            </div>
+                                            <span>Search</span>
                                         </div>
-                                        <span>Search</span>
-                                    </div>
+                                    )}
                                     
                                     <Link to="/cart" className="flex flex-col items-center gap-1 text-xs text-gray-500">
                                         <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600 relative">

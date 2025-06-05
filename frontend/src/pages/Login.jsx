@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
-import { Eye, EyeOff, Mail, Lock, Key } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, Key, Loader2 } from 'lucide-react';
 
 const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -27,6 +27,11 @@ const Login = () => {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [resetStep, setResetStep] = useState('email'); // 'email' or 'token'
 
+  // Loading states
+  const [isLoading, setIsLoading] = useState(false);
+  const [isForgotPasswordLoading, setIsForgotPasswordLoading] = useState(false);
+  const [isResetPasswordLoading, setIsResetPasswordLoading] = useState(false);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -37,6 +42,9 @@ const Login = () => {
 
   const onSubmitHandler = async (event) => {
     event.preventDefault();
+    if (isLoading) return; // Prevent multiple submissions
+    
+    setIsLoading(true);
     try {
       if (currentState === 'Sign Up') {
         if (formData.password !== formData.confirmPassword) {
@@ -71,6 +79,8 @@ const Login = () => {
     } catch (error) {
       console.log(error);
       toast.error(error.response?.data?.message || error.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -93,11 +103,14 @@ const Login = () => {
   };
 
   const handleForgotPassword = async () => {
+    if (isForgotPasswordLoading) return; // Prevent multiple clicks
+    
     try {
       if (!forgotPasswordEmail) {
         toast.error("Please enter your email");
         return;
       }
+      setIsForgotPasswordLoading(true);
       const response = await axios.post(backendURL + '/api/user/forgot-password', {
         email: forgotPasswordEmail
       });
@@ -110,10 +123,14 @@ const Login = () => {
     } catch (error) {
       console.log(error);
       toast.error(error.response?.data?.message || error.message);
+    } finally {
+      setIsForgotPasswordLoading(false);
     }
   };
 
   const handleResetPassword = async () => {
+    if (isResetPasswordLoading) return; // Prevent multiple clicks
+    
     try {
       if (!newPassword || !resetToken) {
         toast.error("Please enter the reset code and new password");
@@ -123,6 +140,7 @@ const Login = () => {
         toast.error("Password must be at least 8 characters");
         return;
       }
+      setIsResetPasswordLoading(true);
       const response = await axios.post(backendURL + '/api/user/reset-password', {
         token: resetToken,
         newPassword
@@ -140,6 +158,8 @@ const Login = () => {
     } catch (error) {
       console.log(error);
       toast.error(error.response?.data?.message || error.message);
+    } finally {
+      setIsResetPasswordLoading(false);
     }
   };
 
@@ -177,13 +197,16 @@ const Login = () => {
                   className='w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-black transition-colors'
                   placeholder='Enter your email address'
                   required
+                  disabled={isForgotPasswordLoading}
                 />
               </div>
               <button 
                 onClick={handleForgotPassword}
-                className='bg-black text-white font-light px-8 py-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer w-full'
+                disabled={isForgotPasswordLoading}
+                className='bg-black text-white font-light px-8 py-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer w-full disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2'
               >
-                Send Reset Code
+                {isForgotPasswordLoading && <Loader2 size={18} className="animate-spin" />}
+                {isForgotPasswordLoading ? 'Sending...' : 'Send Reset Code'}
               </button>
             </div>
           ) : (
@@ -209,6 +232,7 @@ const Login = () => {
                   placeholder='000000'
                   maxLength="6"
                   required
+                  disabled={isResetPasswordLoading}
                 />
               </div>
               
@@ -221,11 +245,13 @@ const Login = () => {
                   className='w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-black transition-colors'
                   placeholder='New Password (min 8 characters)'
                   required
+                  disabled={isResetPasswordLoading}
                 />
                 <button
                   type="button"
                   className='absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600'
                   onClick={() => setShowNewPassword(!showNewPassword)}
+                  disabled={isResetPasswordLoading}
                 >
                   {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
@@ -233,15 +259,18 @@ const Login = () => {
               
               <button 
                 onClick={handleResetPassword}
-                className='bg-black text-white font-light px-8 py-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer w-full'
+                disabled={isResetPasswordLoading}
+                className='bg-black text-white font-light px-8 py-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer w-full disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2'
               >
-                Reset Password
+                {isResetPasswordLoading && <Loader2 size={18} className="animate-spin" />}
+                {isResetPasswordLoading ? 'Resetting...' : 'Reset Password'}
               </button>
               
               <button 
                 type="button"
                 onClick={() => setResetStep('email')}
                 className='text-sm text-gray-600 hover:text-black transition-colors w-full text-center'
+                disabled={isResetPasswordLoading}
               >
                 Didn't receive the code? Try again
               </button>
@@ -271,6 +300,7 @@ const Login = () => {
               className='w-full px-3 py-2 border border-gray-800 mb-4'
               placeholder='Name'
               required
+              disabled={isLoading}
             />
           )}
           
@@ -282,6 +312,7 @@ const Login = () => {
             className='w-full px-3 py-2 border border-gray-800 mb-4'
             placeholder='Email'
             required
+            disabled={isLoading}
           />
           
           <div className='relative mb-4'>
@@ -293,11 +324,13 @@ const Login = () => {
               className='w-full px-3 py-2 border border-gray-800'
               placeholder='Password'
               required
+              disabled={isLoading}
             />
             <button
               type="button"
               className='absolute right-3 top-1/2 transform -translate-y-1/2'
               onClick={() => setShowPassword(!showPassword)}
+              disabled={isLoading}
             >
               {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
@@ -313,11 +346,13 @@ const Login = () => {
                 className='w-full px-3 py-2 border border-gray-800'
                 placeholder='Confirm Password'
                 required
+                disabled={isLoading}
               />
               <button
                 type="button"
                 className='absolute right-3 top-1/2 transform -translate-y-1/2'
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                disabled={isLoading}
               >
                 {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -340,9 +375,14 @@ const Login = () => {
           
           <button 
             type="submit"
-            className='bg-black text-white font-light px-8 py-2 mt-4 cursor-pointer w-full hover:bg-gray-800 transition-colors'
+            disabled={isLoading}
+            className='bg-black text-white font-light px-8 py-2 mt-4 cursor-pointer w-full hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2'
           >
-            {currentState === 'Login' ? 'Sign In' : 'Sign Up'}
+            {isLoading && <Loader2 size={18} className="animate-spin" />}
+            {isLoading 
+              ? (currentState === 'Login' ? 'Signing In...' : 'Signing Up...') 
+              : (currentState === 'Login' ? 'Sign In' : 'Sign Up')
+            }
           </button>
           
           <div className='flex items-center my-4'>

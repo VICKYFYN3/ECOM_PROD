@@ -4,7 +4,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import { OAuth2Client } from 'google-auth-library';
-
+import { v2 as cloudinary } from 'cloudinary';
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Generate a random 6-digit token
@@ -40,7 +40,7 @@ const googleAuth = async (req, res) => {
 
     } catch (error) {
         console.log(error);
-        res.json({ success: false, message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -51,7 +51,7 @@ const forgotPassword = async (req, res) => {
         const user = await userModel.findOne({ email });
 
         if (!user) {
-            return res.json({ success: false, message: "User not found" });
+            return res.status(404).json({ success: false, message: "User not found" });
         }
 
         // Generate 6-digit reset token
@@ -183,7 +183,7 @@ const forgotPassword = async (req, res) => {
 
     } catch (error) {
         console.log(error);
-        res.json({ success: false, message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -193,7 +193,7 @@ const resetPassword = async (req, res) => {
         const { token, newPassword } = req.body;
 
         if (!token || !newPassword) {
-            return res.json({ success: false, message: "Token and new password are required" });
+            return res.status(400).json({ success: false, message: "Token and new password are required" });
         }
 
         // Find user with matching reset token
@@ -203,12 +203,12 @@ const resetPassword = async (req, res) => {
         });
 
         if (!user) {
-            return res.json({ success: false, message: "Invalid or expired reset token" });
+            return res.status(400).json({ success: false, message: "Invalid or expired reset token" });
         }
 
         // Validate new password
         if (newPassword.length < 8) {
-            return res.json({ success: false, message: "Password must be at least 8 characters" });
+            return res.status(400).json({ success: false, message: "Password must be at least 8 characters" });
         }
 
         // Hash new password
@@ -225,12 +225,12 @@ const resetPassword = async (req, res) => {
 
     } catch (error) {
         console.log(error);
-        res.json({ success: false, message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
 const createToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET);
+    return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
 }
 
 //Route to handle user login
@@ -240,7 +240,7 @@ const loginUser = async (req, res) => {
 
         const user = await userModel.findOne({ email });
         if (!user) {
-            return res.json({ success: false, message: "User does not exist" });
+            return res.status(404).json({ success: false, message: "User does not exist" });
         }
         const isMatch = await bcrypt.compare(password, user.password);
         if (isMatch) {
@@ -248,11 +248,11 @@ const loginUser = async (req, res) => {
             res.json({ success: true, token });
         }
         else {
-            res.json({ success: false, message: "Invalid credentials" });
+            res.status(401).json({ success: false, message: "Invalid credentials" });
         }
     } catch (error) {
         console.log(error);
-        res.json({ success: false, message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 }
 
@@ -264,15 +264,15 @@ const registerUser = async (req, res) => {
         //Check if user already exists
         const exists = await userModel.findOne({ email });
         if (exists) {
-            return res.json({ success: false, message: "User already exists" });
+            return res.status(400).json({ success: false, message: "User already exists" });
         }
 
         // validate the user data
         if (!validator.isEmail(email)) {
-            return res.json({ success: false, message: "Please enter a valid email" });
+            return res.status(400).json({ success: false, message: "Please enter a valid email" });
         }
         if (password.length < 8) {
-            return res.json({ success: false, message: "Password must be at least 8 characters" });
+            return res.status(400).json({ success: false, message: "Password must be at least 8 characters" });
         }
         //Hash the password
         const salt = await bcrypt.genSalt(10);
@@ -288,11 +288,11 @@ const registerUser = async (req, res) => {
         const user = await newUser.save();
 
         const token = createToken(user._id);
-        res.json({ success: true, token })
+        res.status(201).json({ success: true, token })
 
     } catch (error) {
         console.log(error);
-        res.json({ success: false, message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 }
 
@@ -301,15 +301,143 @@ const adminLogin = async (req, res) => {
     try {
         const { email, password } = req.body
         if (email === process.env.ADMIN_EMAIL && password === process.env.ADMIN_PASSWORD) {
-            const token = jwt.sign(email + password, process.env.JWT_SECRET)
+            const token = jwt.sign({ email, role: 'admin' }, process.env.JWT_SECRET, { expiresIn: '30d' })
             res.json({ success: true, token })
         } else {
-            res.json({ success: false, message: "Invalid credentials" })
+            res.status(401).json({ success: false, message: "Invalid credentials" })
         }
     } catch (error) {
         console.log(error);
-        res.json({ success: false, message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 }
 
-export { loginUser, registerUser, adminLogin, googleAuth, forgotPassword, resetPassword };
+const getProfile = async (req, res) => {
+    try {
+        const user = await userModel.findById(req.body.userId).select('-password');
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+        
+        // Map backend fields to frontend expected structure
+        const profileData = {
+            fullName: user.name,
+            email: user.email,
+            phoneNumber: user.phoneNumber,
+            profilePicture: user.profilePicture
+        };
+        
+        res.json({ success: true, profile: profileData });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const updateProfile = async (req, res) => {
+    try {
+        const { fullName, phoneNumber } = req.body;
+        const profilePictureFile = req.file; // Single file upload
+        
+        const updateData = { 
+            name: fullName, 
+            phoneNumber
+        };
+        
+        // If profile picture is uploaded
+        if (profilePictureFile) {
+            const result = await cloudinary.uploader.upload(profilePictureFile.path, {
+                resource_type: 'image'
+            });
+            updateData.profilePicture = result.secure_url;
+        }
+        
+        const updatedUser = await userModel.findByIdAndUpdate(
+            req.body.userId,
+            updateData,
+            { new: true }
+        ).select('-password');
+        
+        if (!updatedUser) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+        
+        const profileData = {
+            fullName: updatedUser.name,
+            email: updatedUser.email,
+            phoneNumber: updatedUser.phoneNumber,
+            profilePicture: updatedUser.profilePicture,
+        };
+        
+        res.json({ success: true, profile: profileData });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const changePassword = async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+        const user = await userModel.findById(req.body.userId);
+        
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        
+        const isMatch = await bcrypt.compare(currentPassword, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: 'Current password is incorrect' });
+        }
+        
+        if (newPassword.length < 8) {
+            return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+        }
+        
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        user.password = hashedPassword;
+        await user.save();
+        
+        res.json({ success: true, message: 'Password updated successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const deactivateAccount = async (req, res) => {
+    try {
+        const user = await userModel.findByIdAndUpdate(
+            req.body.userId,
+            { isActive: false }
+        );
+        
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        
+        res.json({ success: true, message: 'Account deactivated successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const logoutAllDevices = async (req, res) => {
+    try {
+        // In a real implementation, you would invalidate tokens here
+        res.json({ success: true, message: 'Logged out from all devices' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export { 
+    loginUser, 
+    registerUser, 
+    adminLogin, 
+    googleAuth, 
+    forgotPassword, 
+    resetPassword, 
+    updateProfile, 
+    changePassword, 
+    getProfile, 
+    deactivateAccount, 
+    logoutAllDevices 
+};

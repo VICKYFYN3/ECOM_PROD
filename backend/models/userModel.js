@@ -6,8 +6,9 @@ const userSchema = new mongoose.Schema({
     password: { type: String, required: true },
     cartData: { type: Object, default: {}},
     resetToken: { type: String },
-    resetTokenExpiry: { type: Date }
-
+    resetTokenExpiry: { type: Date },
+    profilePicture: String,
+    phoneNumber: String
 },{minimize: false});
 
 const userModel = mongoose.models.user || mongoose.model('User', userSchema);

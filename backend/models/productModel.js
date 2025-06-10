@@ -10,6 +10,8 @@ const productSchema = new mongoose.Schema({
     bestseller: {type: Boolean},
     image: {type: Array, required: true},
     date: {type: Number, required: true},
+    averageRating: { type: Number, default: 0 },
+    ratingCount: { type: Number, default: 0 }
 });
 
 

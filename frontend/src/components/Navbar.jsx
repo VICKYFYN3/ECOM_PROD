@@ -81,7 +81,7 @@ const Navbar = () => {
                             <div className='w-40 py-2 bg-white rounded-lg shadow-xl border border-gray-100 overflow-hidden'>
                                 <div className="h-1 w-full bg-gradient-to-r from-purple-500 to-pink-500 mb-2"></div>
                                 <div className='flex flex-col'>
-                                    <p className='cursor-pointer hover:bg-purple-50 py-2 px-4 text-gray-700 hover:text-purple-700 transition-colors'>My Profile</p>
+                                    <p onClick={()=>navigate('/profile')} className='cursor-pointer hover:bg-purple-50 py-2 px-4 text-gray-700 hover:text-purple-700 transition-colors'>My Profile</p>
                                     <p onClick={()=>navigate('/orders')} className='cursor-pointer hover:bg-purple-50 py-2 px-4 text-gray-700 hover:text-purple-700 transition-colors'>Orders</p>
                                     <p onClick={logout} className='cursor-pointer hover:bg-purple-50 py-2 px-4 text-gray-700 hover:text-purple-700 transition-colors'>Logout</p>
                                 </div>

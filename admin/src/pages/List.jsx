@@ -1,7 +1,7 @@
 import axios from 'axios'
 import React, { useEffect, useState } from 'react'
 import { backendURL, currency } from '../App'
-import { toast } from 'react-toastify'
+import { toast } from 'sonner'
 
 const List = ({ token }) => {
     const [list, setList] = useState([])

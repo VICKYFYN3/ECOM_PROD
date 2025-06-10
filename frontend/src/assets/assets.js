@@ -73,6 +73,21 @@ import contact_img from './contact_img.png'
 import paystack_logo from './paystack_logo.png'
 import stripe_logo from './stripe_logo.png'
 import cross_icon from './cross_icon.png'
+import orders_icon from './order_icon.png'
+import address_icon from './address_icon.png'
+import review_icon from './review_icon.png'
+import default_profile from './default_profile.png'
+import empty_orders from './parcel_icon.svg'
+import empty_address from './address_icon.png'
+import empty_cart from './cart_icon.png'
+import empty_reviews from './review_icon.png'
+import device_laptop from './device_laptop.png'
+import device_phone from './device_phone.png'
+import camera_icon from './camera_icon.png'
+import settings_icon from './settings_icon.png'
+import whatsapp_icon from './whatsapp_icon.png'
+import email_icon from './email_icon.png'
+
 
 export const assets = {
     logo,
@@ -92,7 +107,21 @@ export const assets = {
     contact_img,
     paystack_logo,
     stripe_logo,
-    cross_icon
+    cross_icon,
+    orders_icon,
+    address_icon,
+    review_icon,
+    default_profile,
+    empty_orders,
+    empty_address,
+    empty_cart,
+    empty_reviews,
+    device_laptop,
+    device_phone,
+    camera_icon,
+    settings_icon,
+    email_icon,
+    whatsapp_icon
 }
 
 export const products = [

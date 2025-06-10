@@ -12,14 +12,15 @@ import PlaceOrder from './pages/PlaceOrder'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
 import SearchBar from './components/SearchBar'
-import { ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+import { Toaster } from 'sonner';
 import Verify from './pages/Verify'
 import VerifyPaystack from './pages/VerifyPaystack';
+import UserProfile from './pages/UserProfile';
+
 const App = () => {
   return (
     <div className='px-4 sm:px-[5vw] md:px-[7vw] lg:px-[4vw]'>
-      <ToastContainer />
+      <Toaster closeButton richColors position='top-right' />
       <Navbar />
       <SearchBar />
       <Routes>
@@ -34,6 +35,7 @@ const App = () => {
         <Route path='/contact' element={<Contact />} />
         <Route path='/verify' element={<Verify />} />
         <Route path="/verify-paystack" element={<VerifyPaystack />} />
+        <Route path="/profile" element={<UserProfile />} />
       </Routes>
       <Footer />
     </div>

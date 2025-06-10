@@ -4,7 +4,7 @@ import { ShopContext } from './../context/ShopContext';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import axios from 'axios';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 
 const Verify = () => {
     const navigate = useNavigate()

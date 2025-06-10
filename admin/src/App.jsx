@@ -6,8 +6,7 @@ import Add from './pages/Add';
 import List from './pages/List';
 import Orders from './pages/Orders';
 import Login from './components/Login';
-import { ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+import { Toaster } from 'sonner';
 
 export const backendURL = import.meta.env.VITE_BACKEND_URL
 export const currency = '₦'
@@ -20,7 +19,7 @@ const App = () => {
 
   return (
     <div className='bg-gray-50 min-h-screen'>
-      <ToastContainer />
+      <Toaster closeButton richColors position='top-right' />
       {token === ""
         ? <Login setToken={setToken} />
         : <>

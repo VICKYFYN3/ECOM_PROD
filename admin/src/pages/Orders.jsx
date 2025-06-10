@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import { useState } from 'react'
 import axios from 'axios'
 import { backendURL, currency } from '../App'
-import { toast } from 'react-toastify'
+import { toast } from 'sonner'
 import { assets } from '../assets/assets'
 
 const Orders = ({ token }) => {
@@ -72,6 +72,7 @@ const Orders = ({ token }) => {
                                     <p>{order.address.city + "," + order.address.state + "," + order.address.country + "," + order.address.zipcode}</p>
                                 </div>
                                 <p>{order.address.phone}</p>
+                                <p>{order.address.email}</p>
                             </div>
                             <div>
                                 <p className='text-sm sm:text-[15px]'>Items : {order.items.length}</p>

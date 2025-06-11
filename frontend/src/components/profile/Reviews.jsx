@@ -12,8 +12,18 @@ const Reviews = () => {
     const [editingReview, setEditingReview] = useState(null);
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [rating, setRating] = useState(5);
+    const [hoveredRating, setHoveredRating] = useState(0);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+
+    // Rating text mapping
+    const ratingText = {
+        1: "I hate it",
+        2: "I don't like it",
+        3: "I have mixed feelings",
+        4: "I like it",
+        5: "I love it"
+    };
 
     const fetchReviews = async () => {
         try {
@@ -33,6 +43,7 @@ const Reviews = () => {
             const response = await axios.post(backendURL + '/api/review/reviewable-products', {}, {
                 headers: { token }
             });
+            console.log('Reviewable products response:', response.data);
             setReviewableProducts(response.data.products || []);
         } catch (error) {
             console.log(error);
@@ -58,18 +69,27 @@ const Reviews = () => {
             }, {
                 headers: { token }
             });
+
+            console.log('Add review response:', response.data);
+
             if (response.data.success) {
+                // First update the reviews list
                 await fetchReviews();
+                // Then update reviewable products (should now exclude the just-reviewed product)
                 await fetchReviewableProducts();
+
+                // Reset form state
                 setShowReviewForm(false);
                 setSelectedProduct(null);
                 setRating(5);
+                setHoveredRating(0);
                 setError('');
                 toast.success('Rating submitted successfully');
             } else {
                 setError(response.data.message || 'Failed to submit rating');
             }
         } catch (error) {
+            console.error('Error adding review:', error);
             setError(error.response?.data?.message || 'Failed to submit rating');
         } finally {
             setLoading(false);
@@ -90,6 +110,7 @@ const Reviews = () => {
                 await fetchReviews();
                 setEditingReview(null);
                 setRating(5);
+                setHoveredRating(0);
                 setError('');
                 toast.success('Rating updated successfully');
             } else {
@@ -106,6 +127,7 @@ const Reviews = () => {
         setEditingReview(review._id);
         setSelectedProduct(null);
         setRating(review.rating);
+        setHoveredRating(0);
     };
 
     const handleDeleteReview = async (reviewId) => {
@@ -116,6 +138,8 @@ const Reviews = () => {
             });
             if (response.data.success) {
                 await fetchReviews();
+                // Also refresh reviewable products as the deleted review might make the product reviewable again
+                await fetchReviewableProducts();
                 toast.success('Rating deleted successfully');
             } else {
                 setError(response.data.message || 'Failed to delete rating');
@@ -127,55 +151,61 @@ const Reviews = () => {
         }
     };
 
+    const handleRateProduct = (product) => {
+        console.log('Selected product for rating:', product);
+        setSelectedProduct(product);
+        setShowReviewForm(true);
+        setRating(5);
+        setHoveredRating(0);
+    };
+
     return (
         <div>
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-semibold">My Ratings</h2>
-                {reviewableProducts?.length > 0 && !showReviewForm && !editingReview && (
-                    <button
-                        onClick={() => setShowReviewForm(true)}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
-                        disabled={loading}
-                    >
-                        Rate Products
-                    </button>
-                )}
             </div>
 
+            {/* Show reviewable products first */}
+            {reviewableProducts?.length > 0 && !showReviewForm && !editingReview && (
+                <div className="mb-8">
+                    <h3 className="text-lg font-medium mb-4">Products Ready for Rating</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                        {reviewableProducts?.map(product => (
+                            <div
+                                key={product._id}
+                                className="border rounded-lg p-4 hover:border-blue-500 transition-colors"
+                            >
+                                <div className="flex flex-col items-center text-center">
+                                    <div className="w-20 h-20 bg-gray-200 rounded-md overflow-hidden mb-3">
+                                        <img
+                                            src={product.image?.[0] || assets.default_product}
+                                            alt={product.name}
+                                            className="w-full h-full object-cover"
+                                        />
+                                    </div>
+                                    <h4 className="text-sm font-medium mb-1">{product.name}</h4>
+                                    <p className="text-xs text-gray-500 mb-3">
+                                        Purchased on {new Date(product.createdAt).toLocaleDateString()}
+                                    </p>
+                                    <button
+                                        onClick={() => handleRateProduct(product)}
+                                        className="w-full px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium transition-colors"
+                                    >
+                                        Rate This Product
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Review Form */}
             {(showReviewForm || editingReview) && (
                 <div className="mb-8 border rounded-lg p-6">
                     <h3 className="text-lg font-medium mb-4">
-                        {editingReview ? 'Edit Your Rating' : 'Rate a Product'}
+                        {editingReview ? 'Edit Your Rating' : 'Rate This Product'}
                     </h3>
-
-                    {showReviewForm && !selectedProduct && (
-                        <div className="mb-6">
-                            <h4 className="text-sm font-medium text-gray-700 mb-2">Select a product to rate:</h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                                {reviewableProducts?.map(product => (
-                                    <div
-                                        key={product._id}
-                                        onClick={() => setSelectedProduct(product)}
-                                        className="border rounded-lg p-3 cursor-pointer hover:border-blue-500"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="flex-shrink-0 w-16 h-16 bg-gray-200 rounded-md overflow-hidden">
-                                                <img
-                                                    src={product.image?.[0] || assets.default_product}
-                                                    alt={product.name}
-                                                    className="w-full h-full object-cover"
-                                                />
-                                            </div>
-                                            <div>
-                                                <h4 className="text-sm font-medium">{product.name}</h4>
-                                                <p className="text-xs text-gray-500">Purchased on {new Date(product.purchaseDate).toLocaleDateString()}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
 
                     {error && (
                         <div className="mb-4 p-2 bg-red-100 text-red-700 rounded text-sm">
@@ -183,35 +213,49 @@ const Reviews = () => {
                         </div>
                     )}
 
-                    {(selectedProduct || editingReview) && (
-                        <form onSubmit={editingReview ? handleUpdateReview : handleAddReview}>
-                            {selectedProduct && (
-                                <div className="flex items-center gap-3 mb-4 p-3 bg-gray-50 rounded-lg">
-                                    <div className="flex-shrink-0 w-16 h-16 bg-gray-200 rounded-md overflow-hidden">
-                                        <img
-                                            src={selectedProduct.image?.[0] || assets.default_product}
-                                            alt={selectedProduct.name}
-                                            className="w-full h-full object-cover"
-                                        />
-                                    </div>
-                                    <div>
-                                        <h4 className="text-sm font-medium">{selectedProduct.name}</h4>
-                                    </div>
+                    <form onSubmit={editingReview ? handleUpdateReview : handleAddReview}>
+                        {selectedProduct && (
+                            <div className="flex items-center gap-3 mb-6 p-3 bg-gray-50 rounded-lg">
+                                <div className="flex-shrink-0 w-16 h-16 bg-gray-200 rounded-md overflow-hidden">
+                                    <img
+                                        src={selectedProduct.image?.[0] || assets.default_product}
+                                        alt={selectedProduct.name}
+                                        className="w-full h-full object-cover"
+                                    />
                                 </div>
-                            )}
+                                <div>
+                                    <h4 className="text-sm font-medium">{selectedProduct.name}</h4>
+                                    <p className="text-xs text-gray-500">
+                                        Purchased on {new Date(selectedProduct.createdAt).toLocaleDateString()}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
 
-                            <div className="mb-4">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Your Rating</label>
+                        <div className="mb-6">
+                            <label className="block text-sm font-medium text-gray-700 mb-3">Your Rating</label>
+                            <div className="flex items-center gap-2">
+                                {/* Rating text display */}
+                                <div className="w-32 text-sm font-medium text-gray-600">
+                                    {ratingText[hoveredRating || rating]}
+                                </div>
+
+                                {/* Star rating */}
                                 <div className="flex">
                                     {[1, 2, 3, 4, 5].map(star => (
                                         <button
                                             key={star}
                                             type="button"
                                             onClick={() => setRating(star)}
-                                            className="focus:outline-none"
+                                            onMouseEnter={() => setHoveredRating(star)}
+                                            onMouseLeave={() => setHoveredRating(0)}
+                                            className="focus:outline-none transition-colors"
                                         >
                                             <svg
-                                                className={`w-8 h-8 ${rating >= star ? 'text-yellow-400' : 'text-gray-300'}`}
+                                                className={`w-8 h-8 ${(hoveredRating || rating) >= star
+                                                        ? 'text-yellow-400'
+                                                        : 'text-gray-300'
+                                                    } hover:text-yellow-400`}
                                                 fill="currentColor"
                                                 viewBox="0 0 20 20"
                                             >
@@ -221,87 +265,88 @@ const Reviews = () => {
                                     ))}
                                 </div>
                             </div>
+                        </div>
 
-                            <div className="flex justify-end gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (editingReview) {
-                                            setEditingReview(null);
-                                        } else {
-                                            setShowReviewForm(false);
-                                            setSelectedProduct(null);
-                                        }
-                                        setError('');
-                                    }}
-                                    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 text-sm"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
-                                    disabled={loading}
-                                >
-                                    {loading ? 'Processing...' : editingReview ? 'Update Rating' : 'Submit Rating'}
-                                </button>
-                            </div>
-                        </form>
-                    )}
+                        <div className="flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (editingReview) {
+                                        setEditingReview(null);
+                                    } else {
+                                        setShowReviewForm(false);
+                                        setSelectedProduct(null);
+                                    }
+                                    setError('');
+                                    setHoveredRating(0);
+                                }}
+                                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 text-sm"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
+                                disabled={loading}
+                            >
+                                {loading ? 'Processing...' : editingReview ? 'Update Rating' : 'Submit Rating'}
+                            </button>
+                        </div>
+                    </form>
                 </div>
             )}
 
-            {reviews?.length === 0 && !showReviewForm && !editingReview ? (
+            {/* Empty state or existing reviews */}
+            {reviewableProducts?.length === 0 && reviews?.length === 0 && !showReviewForm && !editingReview ? (
                 <div className="text-center py-10">
-                    <img src={assets.empty_reviews} alt="No ratings" className="w-32 h-32 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-1">
-                        {reviewableProducts?.length > 0 ? 'You Have Products to Rate' : 'No Ratings Yet'}
-                    </h3>
-                    <p className="text-gray-500 mb-4">
-                        {reviewableProducts?.length > 0
-                            ? 'You have purchased products that you can rate.'
-                            : 'You haven\'t rated any products yet.'}
-                    </p>
-                    {reviewableProducts?.length > 0 && (
-                        <button
-                            onClick={() => setShowReviewForm(true)}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
-                        >
-                            Rate Products
-                        </button>
-                    )}
+                    <img src={assets.empty_reviews} alt="No products to rate" className="w-32 h-32 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-1">No Products to Rate</h3>
+                    <p className="text-gray-500 mb-4">Complete some orders to rate your purchased products.</p>
                 </div>
-            ) : (
-                <div className="space-y-6">
-                    {reviews?.map(review => (
-                        <div key={review._id} className="border p-4 rounded-md">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <h4 className="text-sm font-medium">{review.product?.name || 'Unnamed Product'}</h4>
-                                    <div className="flex items-center text-yellow-500 text-sm mt-1">
-                                        {'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}
+            ) : reviews?.length > 0 && !showReviewForm && !editingReview ? (
+                <div>
+                    <h3 className="text-lg font-medium mb-4">Your Previous Ratings</h3>
+                    <div className="space-y-4">
+                        {reviews?.map(review => (
+                            <div key={review._id} className="border p-4 rounded-lg">
+                                <div className="flex justify-between items-start">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-12 h-12 bg-gray-200 rounded-md overflow-hidden">
+                                            <img
+                                                src={review.product?.image?.[0] || assets.default_product}
+                                                alt={review.product?.name || 'Product'}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-sm font-medium">{review.product?.name || 'Unnamed Product'}</h4>
+                                            <div className="flex items-center text-yellow-500 text-sm mt-1">
+                                                {'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}
+                                                <span className="ml-2 text-gray-600">({review.rating}/5)</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => handleEditReview(review)}
+                                            className="text-blue-600 hover:text-blue-800 text-xs font-medium"
+                                        >
+                                            Edit
+                                        </button>
+                                        <button
+                                            onClick={() => handleDeleteReview(review._id)}
+                                            className="text-red-600 hover:text-red-800 text-xs font-medium"
+                                            disabled={loading}
+                                        >
+                                            Delete
+                                        </button>
                                     </div>
                                 </div>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => handleEditReview(review)}
-                                        className="text-blue-600 text-xs"
-                                    >
-                                        Edit
-                                    </button>
-                                    <button
-                                        onClick={() => handleDeleteReview(review._id)}
-                                        className="text-red-600 text-xs"
-                                        disabled={loading}
-                                    >
-                                        Delete
-                                    </button>
-                                </div>
                             </div>
-                        </div>
-                    ))}
+                        ))}
+                    </div>
                 </div>
-            )}
+            ) : null}
         </div>
     );
 };

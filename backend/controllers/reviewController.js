@@ -16,8 +16,6 @@ const getUserReviews = async (req, res) => {
 const addReview = async (req, res) => {
     try {
         const { productId, rating } = req.body;
-        
-        // Check if user already reviewed this product
         const existingReview = await reviewModel.findOne({
             userId: req.body.userId,
             productId
@@ -87,35 +85,50 @@ const getReviewableProducts = async (req, res) => {
     try {
         const orders = await orderModel.find({
             userId: req.body.userId,
-            status: 'Delivered' // Changed from 'completed' to 'Delivered'
-        }).populate('items.productId');
-        
+            status: 'Delivered'
+        });
+
+        // Get all product IDs that the user has already reviewed
         const reviewedProducts = await reviewModel.find({
             userId: req.body.userId
         }).distinct('productId');
-        
+
+        // Convert to strings for comparison
+        const reviewedProductIds = reviewedProducts.map(id => id.toString());
+
         const reviewableProducts = [];
         
         orders.forEach(order => {
             order.items.forEach(item => {
-                if (!reviewedProducts.includes(item.productId._id.toString())) {
+                // Make sure item has an _id and hasn't been reviewed
+                if (item._id && !reviewedProductIds.includes(item._id.toString())) {
+                    // Check if this product is already in our reviewableProducts array
                     const exists = reviewableProducts.some(p => 
-                        p._id.toString() === item.productId._id.toString()
+                        p._id.toString() === item._id.toString()
                     );
+                    
                     if (!exists) {
-                        reviewableProducts.push(item.productId);
+                        reviewableProducts.push({
+                            _id: item._id,
+                            name: item.name,
+                            image: item.image,
+                            createdAt: order.createdAt
+                        });
                     }
                 }
             });
         });
-        
+
+        console.log('Reviewed product IDs:', reviewedProductIds);
+        console.log('Reviewable products:', reviewableProducts.length);
+
         res.json({ success: true, products: reviewableProducts });
     } catch (error) {
+        console.error('Error in getReviewableProducts:', error);
         res.json({ success: false, message: error.message });
     }
 };
 
-// Helper function to update product's average rating
 const updateProductRating = async (productId) => {
     const reviews = await reviewModel.find({ productId });
     

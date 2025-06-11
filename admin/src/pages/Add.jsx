@@ -119,7 +119,7 @@ const Add = ({token}) => {
                     <div>
                         <label className='block text-sm font-medium text-gray-700 mb-2'>Price *</label>
                         <div className="relative">
-                            <span className="absolute left-3 top-3 text-gray-500">$</span>
+                            <span className="absolute left-3 top-3 text-gray-500">₦</span>
                             <input 
                                 onChange={(e)=>setPrice(e.target.value)} 
                                 value={price} 

@@ -21,8 +21,7 @@ const placeOrder = async (req, res) => {
             address,
             amount,
             paymentMethod: "COD",
-            payment: false,
-            date: Date.now()
+            payment: false
         }
 
         const newOrder = new orderModel(orderData)
@@ -52,8 +51,7 @@ const placeOrderStripe = async (req, res) => {
             address,
             amount,
             paymentMethod: "Stripe",
-            payment: false,
-            date: Date.now()
+            payment: false
         }
 
         const newOrder = new orderModel(orderData)
@@ -125,8 +123,7 @@ const placeOrderPaystack = async (req, res) => {
             address,
             amount,
             paymentMethod: "Paystack",
-            payment: false,
-            date: Date.now()
+            payment: false
         };
 
         const newOrder = new orderModel(orderData);

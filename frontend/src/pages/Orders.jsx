@@ -25,7 +25,7 @@ const Orders = () => {
             item['status'] = order.status
             item['payment'] = order.payment
             item['paymentMethod'] = order.paymentMethod
-            item['date'] = order.date
+            item['date'] = order.createdAt
             allOrdersItem.push(item)
           })
         })

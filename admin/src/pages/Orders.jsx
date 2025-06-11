@@ -78,7 +78,7 @@ const Orders = ({ token }) => {
                                 <p className='text-sm sm:text-[15px]'>Items : {order.items.length}</p>
                                 <p className='mt-3'>Method : {order.paymentMethod}</p>
                                 <p>Payment : {order.payment ? 'Done' : 'Pending'}</p>
-                                <p>Date : {new Date(order.date).toLocaleDateString()}</p>
+                                <p>Date : {new Date(order.createdAt).toLocaleDateString()}</p>
                             </div>
                             <p className='text-sm sm:text-[15px]'>{currency}{order.amount}</p>
                             <select onChange={(event)=>statusHandler(event,order._id)} value={order.status} className='p-2 font-semibold'>

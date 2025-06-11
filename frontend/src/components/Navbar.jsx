@@ -74,7 +74,7 @@ const Navbar = () => {
                     {/* Profile dropdown - redesigned */}
                     <div className='group relative'>
                         <div className="absolute inset-0 rounded-full bg-pink-200 scale-0 group-hover:scale-150 opacity-0 group-hover:opacity-30 transition-all duration-500"></div>
-                        <img onClick={() => token ? null : navigate('/login')} src={assets.profile_icon} className='w-5 cursor-pointer relative' alt="" />
+                        <img onClick={() => token ? navigate('/profile') : navigate('/login')} src={assets.profile_icon} className='w-5 cursor-pointer relative' alt="" />
                         {/* Dropdown */}
                         {token && 
                         <div className='invisible group-hover:visible opacity-0 group-hover:opacity-100 absolute dropdown-menu right-0 pt-3 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0'>

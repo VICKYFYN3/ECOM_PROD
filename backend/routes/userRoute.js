@@ -9,8 +9,7 @@ import {
     getProfile,
     updateProfile,
     changePassword,
-    deactivateAccount,
-    logoutAllDevices
+    deactivateAccount
 } from '../controllers/userController.js';
 import authUser from './../middleware/auth.js';
 import upload from '../middleware/multer.js';
@@ -27,6 +26,5 @@ userRouter.post('/profile/get', authUser, getProfile);
 userRouter.post('/profile/update', upload.single('profilePicture'), authUser, updateProfile);
 userRouter.post('/profile/change-password', authUser, changePassword);
 userRouter.post('/deactivate', authUser, deactivateAccount);
-userRouter.post('/logout-all', authUser, logoutAllDevices);
 
 export default userRouter;

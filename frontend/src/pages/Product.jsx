@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { ShopContext } from '../context/ShopContext';
 import { assets } from '../assets/assets';
 import RelatedProducts from '../components/RelatedProducts';
+import { toast } from 'sonner';
 
 const Product = () => {
   const { productId } = useParams();
@@ -20,6 +21,16 @@ const Product = () => {
       console.warn("Product not found with ID:", productId);
     }
   }, [productId, products]);
+
+  const handleAddToCart = () => {
+    if (!size) {
+      toast.warning('Please select a size');
+      return;
+    }
+    
+    addToCart(productData._id, size);
+    toast.success(`${productData.name} (Size: ${size}) added to cart!`);
+  };
 
   // Calculate star display
   const averageRating = productData?.averageRating || 0;
@@ -98,7 +109,7 @@ const Product = () => {
             </div>
           </div>
           <button
-            onClick={() => addToCart(productData._id, size)}
+            onClick={handleAddToCart}
             className='bg-black text-white px-8 py-3 text-sm active:bg-gray-700 cursor-pointer'
           >
             ADD TO CART

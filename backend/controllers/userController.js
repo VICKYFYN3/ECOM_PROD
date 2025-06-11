@@ -404,29 +404,19 @@ const changePassword = async (req, res) => {
 
 const deactivateAccount = async (req, res) => {
     try {
-        const user = await userModel.findByIdAndUpdate(
-            req.body.userId,
-            { isActive: false }
-        );
+        const user = await userModel.findByIdAndDelete(req.body.userId);
         
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
         
-        res.json({ success: true, message: 'Account deactivated successfully' });
+        res.json({ success: true, message: 'Account deleted successfully' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-const logoutAllDevices = async (req, res) => {
-    try {
-        // In a real implementation, you would invalidate tokens here
-        res.json({ success: true, message: 'Logged out from all devices' });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
+
 
 export { 
     loginUser, 
@@ -438,6 +428,5 @@ export {
     updateProfile, 
     changePassword, 
     getProfile, 
-    deactivateAccount, 
-    logoutAllDevices 
+    deactivateAccount
 };

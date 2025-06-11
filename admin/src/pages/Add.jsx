@@ -20,6 +20,84 @@ const Add = ({token}) => {
     const [sizes,setSizes] = useState([]);
     const [loading, setLoading] = useState(false);
 
+    // New state for enhanced features
+    const [showPreview, setShowPreview] = useState(false);
+    const [dragActive, setDragActive] = useState(false);
+    // eslint-disable-next-line no-unused-vars
+    const [quickFillTemplate, setQuickFillTemplate] = useState("");
+
+    // Quick fill templates
+    const templates = {
+        "t-shirt": {
+            name: "Premium Cotton T-Shirt",
+            description: "Comfortable, breathable cotton t-shirt perfect for everyday wear. Made from 100% premium cotton with a relaxed fit.",
+            price: "2500",
+            category: "Men",
+            subCategory: "Topwear",
+            sizes: ["S", "M", "L", "XL"]
+        },
+        "jeans": {
+            name: "Classic Denim Jeans",
+            description: "Durable denim jeans with a classic straight fit. Perfect for casual and semi-formal occasions.",
+            price: "8500",
+            category: "Men",
+            subCategory: "Bottomwear",
+            sizes: ["S", "M", "L", "XL", "XXL"]
+        },
+        "dress": {
+            name: "Elegant Evening Dress",
+            description: "Beautiful evening dress perfect for special occasions. Made from high-quality fabric with elegant design.",
+            price: "12000",
+            category: "Women",
+            subCategory: "Topwear",
+            sizes: ["S", "M", "L", "XL"]
+        }
+    };
+
+    const handleQuickFill = (template) => {
+        const data = templates[template];
+        setName(data.name);
+        setDescription(data.description);
+        setPrice(data.price);
+        setCategory(data.category);
+        setSubCategory(data.subCategory);
+        setSizes(data.sizes);
+        setQuickFillTemplate("");
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        setDragActive(true);
+    };
+
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        setDragActive(false);
+    };
+
+    const handleDrop = (e, setImage) => {
+        e.preventDefault();
+        setDragActive(false);
+        const files = e.dataTransfer.files;
+        if (files && files[0]) {
+            setImage(files[0]);
+        }
+    };
+
+    const resetForm = () => {
+        setName('');
+        setDescription('');
+        setImage1(false);
+        setImage2(false);
+        setImage3(false);
+        setImage4(false);
+        setPrice('');
+        setSizes([]);
+        setBestseller(false);
+        setCategory("Men");
+        setSubCategory("Topwear");
+    };
+
     const onSubmitHandler = async (e) => {
         e.preventDefault();
         setLoading(true);
@@ -43,14 +121,7 @@ const Add = ({token}) => {
 
             if(response.data.success){
                 toast.success(response.data.message)
-                setName('')
-                setDescription('')
-                setImage1(false)
-                setImage2(false)
-                setImage3(false)
-                setImage4(false)
-                setPrice('')
-                setSizes([])
+                resetForm();
             }else{
                 toast.error(response.data.message)
             }
@@ -65,17 +136,55 @@ const Add = ({token}) => {
 
     return (
         <div className="bg-white rounded-lg shadow-sm p-6">
-            {/* Header */}
+            {/* Header with Quick Actions */}
             <div className="mb-8">
-                <h2 className="text-2xl font-bold text-gray-900">Add New Product</h2>
-                <p className="text-gray-600 mt-1">Fill in the details below to add a new product to your store</p>
+                <div className="flex justify-between items-start mb-4">
+                    <div>
+                        <h2 className="text-2xl font-bold text-gray-900">Add New Product</h2>
+                        <p className="text-gray-600 mt-1">Fill in the details below to add a new product to your store</p>
+                    </div>
+                    <div className="flex space-x-2">
+                        <button
+                            type="button"
+                            onClick={() => setShowPreview(!showPreview)}
+                            className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                        >
+                            {showPreview ? 'Hide' : 'Show'} Preview
+                        </button>
+                        <button
+                            type="button"
+                            onClick={resetForm}
+                            className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                        >
+                            Clear All
+                        </button>
+                    </div>
+                </div>
+
+                {/* Quick Fill Templates */}
+                <div className="bg-blue-50 rounded-lg p-4 mb-6">
+                    <h3 className="text-sm font-medium text-blue-900 mb-2">Quick Fill Templates</h3>
+                    <div className="flex flex-wrap gap-2">
+                        {Object.keys(templates).map((template) => (
+                            <button
+                                key={template}
+                                type="button"
+                                onClick={() => handleQuickFill(template)}
+                                className="px-3 py-1 text-xs font-medium text-blue-700 bg-white rounded-full hover:bg-blue-100 transition-colors capitalize"
+                            >
+                                {template.replace('-', ' ')}
+                            </button>
+                        ))}
+                    </div>
+                    <p className="text-xs text-blue-700 mt-2">Click a template to auto-fill form with sample data</p>
+                </div>
             </div>
 
             <form onSubmit={onSubmitHandler} className='space-y-8'>
-                {/* Image Upload Section */}
+                {/* Image Upload Section with Drag & Drop */}
                 <div className="bg-gray-50 rounded-lg p-6">
                     <h3 className='text-lg font-semibold text-gray-900 mb-4'>Product Images</h3>
-                    <p className='text-sm text-gray-600 mb-4'>Upload up to 4 high-quality images of your product</p>
+                    <p className='text-sm text-gray-600 mb-4'>Upload up to 4 high-quality images (drag & drop supported)</p>
                     <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
                         {[
                             { image: image1, setImage: setImage1, id: "image1" },
@@ -83,14 +192,40 @@ const Add = ({token}) => {
                             { image: image3, setImage: setImage3, id: "image3" },
                             { image: image4, setImage: setImage4, id: "image4" }
                         ].map((item, index) => (
-                            <label key={item.id} htmlFor={item.id} className="group cursor-pointer">
-                                <div className="relative border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-blue-400 transition-colors duration-200 bg-white group-hover:bg-blue-50">
-                                    <img 
-                                        className='w-full h-24 object-cover rounded-md' 
-                                        src={!item.image ? assets.upload_area : URL.createObjectURL(item.image)} 
-                                        alt={`Upload ${index + 1}`} 
-                                    />
-                                </div>
+                            <div key={item.id} className="relative">
+                                <label 
+                                    htmlFor={item.id} 
+                                    className="group cursor-pointer block"
+                                    onDragOver={handleDragOver}
+                                    onDragLeave={handleDragLeave}
+                                    onDrop={(e) => handleDrop(e, item.setImage)}
+                                >
+                                    <div className={`relative border-2 border-dashed rounded-lg p-4 transition-all duration-200 bg-white ${
+                                        dragActive 
+                                            ? 'border-blue-500 bg-blue-50' 
+                                            : 'border-gray-300 hover:border-blue-400 group-hover:bg-blue-50'
+                                    }`}>
+                                        <img 
+                                            className='w-full h-24 object-cover rounded-md' 
+                                            src={!item.image ? assets.upload_area : URL.createObjectURL(item.image)} 
+                                            alt={`Upload ${index + 1}`} 
+                                        />
+                                        {!item.image && (
+                                            <div className="absolute inset-0 flex items-center justify-center">
+                                                <span className="text-xs text-gray-500">Drop or click</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </label>
+                                {item.image && (
+                                    <button
+                                        type="button"
+                                        onClick={() => item.setImage(false)}
+                                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs hover:bg-red-600 transition-colors"
+                                    >
+                                        ×
+                                    </button>
+                                )}
                                 <input 
                                     onChange={(e)=>item.setImage(e.target.files[0])} 
                                     type="file" 
@@ -98,21 +233,25 @@ const Add = ({token}) => {
                                     hidden 
                                     accept="image/*"
                                 />
-                            </label>
+                            </div>
                         ))}
                     </div>
                 </div>
 
-                {/* Basic Information */}
+                {/* Basic Information with Auto-suggestions */}
                 <div className="grid md:grid-cols-2 gap-6">
                     <div>
-                        <label className='block text-sm font-medium text-gray-700 mb-2'>Product Name *</label>
+                        <label className='block text-sm font-medium text-gray-700 mb-2'>
+                            Product Name * 
+                            <span className="text-xs text-gray-500 font-normal ml-1">({name.length}/100)</span>
+                        </label>
                         <input 
                             onChange={(e)=>setName(e.target.value)} 
                             value={name} 
                             className='w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200' 
                             type="text" 
                             placeholder='Enter product name' 
+                            maxLength="100"
                             required 
                         />
                     </div>
@@ -131,27 +270,42 @@ const Add = ({token}) => {
                                 required
                             />
                         </div>
+                        {price && (
+                            <p className="text-xs text-gray-500 mt-1">
+                                Formatted: ₦{parseFloat(price).toLocaleString()}
+                            </p>
+                        )}
                     </div>
                 </div>
 
                 <div>
-                    <label className='block text-sm font-medium text-gray-700 mb-2'>Product Description *</label>
+                    <label className='block text-sm font-medium text-gray-700 mb-2'>
+                        Product Description * 
+                        <span className="text-xs text-gray-500 font-normal ml-1">({description.length}/500)</span>
+                    </label>
                     <textarea 
                         onChange={(e)=>setDescription(e.target.value)} 
                         value={description} 
                         className='w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 resize-none' 
                         rows="4"
                         placeholder='Describe your product in detail...' 
+                        maxLength="500"
                         required 
                     />
                 </div>
 
-                {/* Categories */}
+                {/* Categories with Smart Defaults */}
                 <div className="grid md:grid-cols-2 gap-6">
                     <div>
                         <label className='block text-sm font-medium text-gray-700 mb-2'>Category</label>
                         <select 
-                            onChange={(e)=>setCategory(e.target.value)} 
+                            onChange={(e)=>{
+                                setCategory(e.target.value);
+                                // Smart subcategory reset
+                                if(e.target.value === "Kids") {
+                                    setSubCategory("Topwear");
+                                }
+                            }} 
                             value={category}
                             className='w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 bg-white'
                         >
@@ -174,9 +328,34 @@ const Add = ({token}) => {
                     </div>
                 </div>
 
-                {/* Sizes */}
+                {/* Sizes with Quick Select */}
                 <div>
                     <label className='block text-sm font-medium text-gray-700 mb-3'>Available Sizes</label>
+                    <div className="mb-3">
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setSizes(['S', 'M', 'L'])}
+                                className="px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded-full hover:bg-blue-100 transition-colors"
+                            >
+                                Standard (S,M,L)
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSizes(['S', 'M', 'L', 'XL', 'XXL'])}
+                                className="px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded-full hover:bg-blue-100 transition-colors"
+                            >
+                                All Sizes
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSizes([])}
+                                className="px-3 py-1 text-xs font-medium text-gray-600 bg-gray-50 rounded-full hover:bg-gray-100 transition-colors"
+                            >
+                                Clear
+                            </button>
+                        </div>
+                    </div>
                     <div className='flex flex-wrap gap-3'>
                         {['S', 'M', 'L', 'XL', 'XXL'].map((size) => (
                             <button
@@ -212,22 +391,80 @@ const Add = ({token}) => {
                     <p className="text-xs text-gray-500 mt-1 ml-7">This product will be featured in the bestsellers section</p>
                 </div>
 
+                {/* Preview Section */}
+                {showPreview && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+                        <h3 className="text-lg font-semibold text-yellow-800 mb-4">Product Preview</h3>
+                        <div className="bg-white rounded-lg p-4 border">
+                            <div className="flex space-x-4">
+                                <div className="w-20 h-20 bg-gray-100 rounded-lg flex-shrink-0">
+                                    {image1 && (
+                                        <img 
+                                            src={URL.createObjectURL(image1)} 
+                                            alt="Preview" 
+                                            className="w-full h-full object-cover rounded-lg"
+                                        />
+                                    )}
+                                </div>
+                                <div className="flex-1">
+                                    <h4 className="font-medium text-gray-900">{name || "Product Name"}</h4>
+                                    <p className="text-sm text-gray-600 mt-1">{description || "Product description..."}</p>
+                                    <div className="flex items-center space-x-4 mt-2">
+                                        <span className="font-semibold text-green-600">
+                                            ₦{price ? parseFloat(price).toLocaleString() : "0"}
+                                        </span>
+                                        {bestseller && (
+                                            <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full">
+                                                Bestseller
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center space-x-2 mt-2">
+                                        <span className="text-xs text-gray-500">Sizes:</span>
+                                        {sizes.map(size => (
+                                            <span key={size} className="px-2 py-1 text-xs bg-gray-100 rounded">
+                                                {size}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Submit Button */}
-                <div className="flex justify-end pt-6 border-t border-gray-200">
-                    <button 
-                        type="submit" 
-                        disabled={loading}
-                        className={`px-8 py-3 font-medium rounded-lg focus:ring-4 focus:ring-blue-200 transition-all duration-200 shadow-sm hover:shadow-md flex items-center space-x-2 ${
-                            loading 
-                                ? 'bg-gray-400 text-white cursor-not-allowed' 
-                                : 'bg-blue-600 text-white hover:bg-blue-700'
-                        }`}
-                    >
-                        {loading && (
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                <div className="flex justify-between items-center pt-6 border-t border-gray-200">
+                    <div className="text-sm text-gray-500">
+                        {!name || !description || !price || sizes.length === 0 ? (
+                            <span className="text-red-500">Please fill in all required fields</span>
+                        ) : (
+                            <span className="text-green-500">✓ Ready to submit</span>
                         )}
-                        <span>{loading ? 'Adding Product...' : 'Add Product'}</span>
-                    </button>
+                    </div>
+                    <div className="flex space-x-3">
+                        <button 
+                            type="button"
+                            onClick={() => setShowPreview(!showPreview)}
+                            className="px-6 py-3 font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors duration-200"
+                        >
+                            Preview
+                        </button>
+                        <button 
+                            type="submit" 
+                            disabled={loading || !name || !description || !price || sizes.length === 0}
+                            className={`px-8 py-3 font-medium rounded-lg focus:ring-4 focus:ring-blue-200 transition-all duration-200 shadow-sm hover:shadow-md flex items-center space-x-2 ${
+                                loading || !name || !description || !price || sizes.length === 0
+                                    ? 'bg-gray-400 text-white cursor-not-allowed' 
+                                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                            }`}
+                        >
+                            {loading && (
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                            )}
+                            <span>{loading ? 'Adding Product...' : 'Add Product'}</span>
+                        </button>
+                    </div>
                 </div>
             </form>
         </div>

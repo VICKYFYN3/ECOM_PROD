@@ -4,27 +4,31 @@ import axios from 'axios';
 import { backendURL } from '../App';
 import { toast } from 'sonner';
 
-const Add = ({token}) => {
+const Add = ({ token }) => {
 
-    const [image1,setImage1] = useState(false);
-    const [image2,setImage2] = useState(false);
-    const [image3,setImage3] = useState(false);
-    const [image4,setImage4] = useState(false);
+    const [image1, setImage1] = useState(false);
+    const [image2, setImage2] = useState(false);
+    const [image3, setImage3] = useState(false);
+    const [image4, setImage4] = useState(false);
 
-    const [name,setName] = useState("");
-    const [description,setDescription] = useState("");
-    const [price,setPrice] = useState("");
-    const [category,setCategory] = useState("Men");
-    const [subCategory,setSubCategory] = useState("Topwear");
-    const [bestseller,setBestseller] = useState(false);
-    const [sizes,setSizes] = useState([]);
+    const [name, setName] = useState("");
+    const [description, setDescription] = useState("");
+    const [price, setPrice] = useState("");
+    const [category, setCategory] = useState("Men");
+    const [subCategory, setSubCategory] = useState("Topwear");
+    const [bestseller, setBestseller] = useState(false);
+    const [sizes, setSizes] = useState([]);
     const [loading, setLoading] = useState(false);
-
+    // Remove stockQuantity state as it will be calculated
     // New state for enhanced features
     const [showPreview, setShowPreview] = useState(false);
     const [dragActive, setDragActive] = useState(false);
     // eslint-disable-next-line no-unused-vars
     const [quickFillTemplate, setQuickFillTemplate] = useState("");
+    const [sizeStocks, setSizeStocks] = useState({});
+
+    // Calculate total stock from individual size stocks
+    const totalStock = Object.values(sizeStocks).reduce((total, stock) => total + (stock || 0), 0);
 
     // Quick fill templates
     const templates = {
@@ -34,7 +38,8 @@ const Add = ({token}) => {
             price: "2500",
             category: "Men",
             subCategory: "Topwear",
-            sizes: ["S", "M", "L", "XL"]
+            sizes: ["S", "M", "L", "XL"],
+            sizeStocks: { "S": 10, "M": 15, "L": 20, "XL": 10 }
         },
         "jeans": {
             name: "Classic Denim Jeans",
@@ -42,7 +47,8 @@ const Add = ({token}) => {
             price: "8500",
             category: "Men",
             subCategory: "Bottomwear",
-            sizes: ["S", "M", "L", "XL", "XXL"]
+            sizes: ["S", "M", "L", "XL", "XXL"],
+            sizeStocks: { "S": 8, "M": 12, "L": 15, "XL": 10, "XXL": 5 }
         },
         "dress": {
             name: "Elegant Evening Dress",
@@ -50,7 +56,8 @@ const Add = ({token}) => {
             price: "12000",
             category: "Women",
             subCategory: "Topwear",
-            sizes: ["S", "M", "L", "XL"]
+            sizes: ["S", "M", "L", "XL"],
+            sizeStocks: { "S": 6, "M": 10, "L": 12, "XL": 8 }
         }
     };
 
@@ -62,6 +69,7 @@ const Add = ({token}) => {
         setCategory(data.category);
         setSubCategory(data.subCategory);
         setSizes(data.sizes);
+        setSizeStocks(data.sizeStocks);
         setQuickFillTemplate("");
     };
 
@@ -96,6 +104,29 @@ const Add = ({token}) => {
         setBestseller(false);
         setCategory("Men");
         setSubCategory("Topwear");
+        setSizeStocks({});
+    };
+
+    // Handle size selection and automatically initialize stock
+    const handleSizeToggle = (size) => {
+        setSizes(prev => {
+            const newSizes = prev.includes(size) 
+                ? prev.filter(item => item !== size) 
+                : [...prev, size];
+            
+            // Update sizeStocks when sizes change
+            setSizeStocks(prevStocks => {
+                const newStocks = { ...prevStocks };
+                if (newSizes.includes(size) && !prevStocks[size]) {
+                    newStocks[size] = 0; // Initialize with 0
+                } else if (!newSizes.includes(size)) {
+                    delete newStocks[size]; // Remove if size is deselected
+                }
+                return newStocks;
+            });
+            
+            return newSizes;
+        });
     };
 
     const onSubmitHandler = async (e) => {
@@ -104,28 +135,28 @@ const Add = ({token}) => {
         try {
             const formData = new FormData();
 
-            formData.append("name",name)
-            formData.append("description",description)
-            formData.append("price",price)
-            formData.append("category",category)
-            formData.append("subCategory",subCategory)
-            formData.append("bestseller",bestseller)
-            formData.append("sizes",JSON.stringify(sizes))
+            formData.append("name", name)
+            formData.append("description", description)
+            formData.append("price", price)
+            formData.append("category", category)
+            formData.append("subCategory", subCategory)
+            formData.append("bestseller", bestseller)
+            formData.append("sizes", JSON.stringify(sizes))
+            formData.append("sizeStocks", JSON.stringify(sizeStocks)) // Send size stocks instead of total stock
+            image1 && formData.append("image1", image1)
+            image2 && formData.append("image2", image2)
+            image3 && formData.append("image3", image3)
+            image4 && formData.append("image4", image4)
 
-            image1 && formData.append("image1",image1)
-            image2 && formData.append("image2",image2)
-            image3 && formData.append("image3",image3)
-            image4 && formData.append("image4",image4)
+            const response = await axios.post(backendURL + "/api/product/add", formData, { headers: { token } })
 
-            const response = await axios.post(backendURL + "/api/product/add",formData,{headers:{token}})
-
-            if(response.data.success){
+            if (response.data.success) {
                 toast.success(response.data.message)
                 resetForm();
-            }else{
+            } else {
                 toast.error(response.data.message)
             }
-            
+
         } catch (error) {
             console.log(error);
             toast.error(error.message)
@@ -193,22 +224,21 @@ const Add = ({token}) => {
                             { image: image4, setImage: setImage4, id: "image4" }
                         ].map((item, index) => (
                             <div key={item.id} className="relative">
-                                <label 
-                                    htmlFor={item.id} 
+                                <label
+                                    htmlFor={item.id}
                                     className="group cursor-pointer block"
                                     onDragOver={handleDragOver}
                                     onDragLeave={handleDragLeave}
                                     onDrop={(e) => handleDrop(e, item.setImage)}
                                 >
-                                    <div className={`relative border-2 border-dashed rounded-lg p-4 transition-all duration-200 bg-white ${
-                                        dragActive 
-                                            ? 'border-blue-500 bg-blue-50' 
-                                            : 'border-gray-300 hover:border-blue-400 group-hover:bg-blue-50'
-                                    }`}>
-                                        <img 
-                                            className='w-full h-24 object-cover rounded-md' 
-                                            src={!item.image ? assets.upload_area : URL.createObjectURL(item.image)} 
-                                            alt={`Upload ${index + 1}`} 
+                                    <div className={`relative border-2 border-dashed rounded-lg p-4 transition-all duration-200 bg-white ${dragActive
+                                        ? 'border-blue-500 bg-blue-50'
+                                        : 'border-gray-300 hover:border-blue-400 group-hover:bg-blue-50'
+                                        }`}>
+                                        <img
+                                            className='w-full h-24 object-cover rounded-md'
+                                            src={!item.image ? assets.upload_area : URL.createObjectURL(item.image)}
+                                            alt={`Upload ${index + 1}`}
                                         />
                                         {!item.image && (
                                             <div className="absolute inset-0 flex items-center justify-center">
@@ -226,11 +256,11 @@ const Add = ({token}) => {
                                         ×
                                     </button>
                                 )}
-                                <input 
-                                    onChange={(e)=>item.setImage(e.target.files[0])} 
-                                    type="file" 
-                                    id={item.id} 
-                                    hidden 
+                                <input
+                                    onChange={(e) => item.setImage(e.target.files[0])}
+                                    type="file"
+                                    id={item.id}
+                                    hidden
                                     accept="image/*"
                                 />
                             </div>
@@ -238,33 +268,33 @@ const Add = ({token}) => {
                     </div>
                 </div>
 
-                {/* Basic Information with Auto-suggestions */}
+                {/* Basic Information */}
                 <div className="grid md:grid-cols-2 gap-6">
                     <div>
                         <label className='block text-sm font-medium text-gray-700 mb-2'>
-                            Product Name * 
+                            Product Name *
                             <span className="text-xs text-gray-500 font-normal ml-1">({name.length}/100)</span>
                         </label>
-                        <input 
-                            onChange={(e)=>setName(e.target.value)} 
-                            value={name} 
-                            className='w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200' 
-                            type="text" 
-                            placeholder='Enter product name' 
+                        <input
+                            onChange={(e) => setName(e.target.value)}
+                            value={name}
+                            className='w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200'
+                            type="text"
+                            placeholder='Enter product name'
                             maxLength="100"
-                            required 
+                            required
                         />
                     </div>
                     <div>
                         <label className='block text-sm font-medium text-gray-700 mb-2'>Price *</label>
                         <div className="relative">
                             <span className="absolute left-3 top-3 text-gray-500">₦</span>
-                            <input 
-                                onChange={(e)=>setPrice(e.target.value)} 
-                                value={price} 
-                                className='w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200' 
-                                placeholder='0.00' 
-                                type="number" 
+                            <input
+                                onChange={(e) => setPrice(e.target.value)}
+                                value={price}
+                                className='w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200'
+                                placeholder='0.00'
+                                type="number"
                                 step="0.01"
                                 min="0"
                                 required
@@ -280,17 +310,17 @@ const Add = ({token}) => {
 
                 <div>
                     <label className='block text-sm font-medium text-gray-700 mb-2'>
-                        Product Description * 
+                        Product Description *
                         <span className="text-xs text-gray-500 font-normal ml-1">({description.length}/500)</span>
                     </label>
-                    <textarea 
-                        onChange={(e)=>setDescription(e.target.value)} 
-                        value={description} 
-                        className='w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 resize-none' 
+                    <textarea
+                        onChange={(e) => setDescription(e.target.value)}
+                        value={description}
+                        className='w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 resize-none'
                         rows="4"
-                        placeholder='Describe your product in detail...' 
+                        placeholder='Describe your product in detail...'
                         maxLength="500"
-                        required 
+                        required
                     />
                 </div>
 
@@ -298,14 +328,14 @@ const Add = ({token}) => {
                 <div className="grid md:grid-cols-2 gap-6">
                     <div>
                         <label className='block text-sm font-medium text-gray-700 mb-2'>Category</label>
-                        <select 
-                            onChange={(e)=>{
+                        <select
+                            onChange={(e) => {
                                 setCategory(e.target.value);
                                 // Smart subcategory reset
-                                if(e.target.value === "Kids") {
+                                if (e.target.value === "Kids") {
                                     setSubCategory("Topwear");
                                 }
-                            }} 
+                            }}
                             value={category}
                             className='w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 bg-white'
                         >
@@ -316,8 +346,8 @@ const Add = ({token}) => {
                     </div>
                     <div>
                         <label className='block text-sm font-medium text-gray-700 mb-2'>Sub Category</label>
-                        <select 
-                            onChange={(e)=>setSubCategory(e.target.value)} 
+                        <select
+                            onChange={(e) => setSubCategory(e.target.value)}
                             value={subCategory}
                             className='w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 bg-white'
                         >
@@ -335,54 +365,99 @@ const Add = ({token}) => {
                         <div className="flex flex-wrap gap-2">
                             <button
                                 type="button"
-                                onClick={() => setSizes(['S', 'M', 'L'])}
+                                onClick={() => {
+                                    setSizes(['S', 'M', 'L']);
+                                    setSizeStocks({ S: 0, M: 0, L: 0 });
+                                }}
                                 className="px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded-full hover:bg-blue-100 transition-colors"
                             >
                                 Standard (S,M,L)
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setSizes(['S', 'M', 'L', 'XL', 'XXL'])}
+                                onClick={() => {
+                                    setSizes(['S', 'M', 'L', 'XL', 'XXL']);
+                                    setSizeStocks({ S: 0, M: 0, L: 0, XL: 0, XXL: 0 });
+                                }}
                                 className="px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded-full hover:bg-blue-100 transition-colors"
                             >
                                 All Sizes
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setSizes([])}
+                                onClick={() => {
+                                    setSizes([]);
+                                    setSizeStocks({});
+                                }}
                                 className="px-3 py-1 text-xs font-medium text-gray-600 bg-gray-50 rounded-full hover:bg-gray-100 transition-colors"
                             >
                                 Clear
                             </button>
                         </div>
                     </div>
-                    <div className='flex flex-wrap gap-3'>
+                    <div className='flex flex-wrap gap-3 mb-4'>
                         {['S', 'M', 'L', 'XL', 'XXL'].map((size) => (
                             <button
                                 key={size}
                                 type="button"
-                                onClick={()=>setSizes(prev => prev.includes(size) ? prev.filter(item => item !== size): [...prev, size])}
-                                className={`px-4 py-2 rounded-lg border-2 font-medium transition-all duration-200 ${
-                                    sizes.includes(size) 
-                                        ? "bg-blue-500 text-white border-blue-500 shadow-sm" 
-                                        : "bg-white text-gray-700 border-gray-300 hover:border-blue-300 hover:bg-blue-50"
-                                }`}
+                                onClick={() => handleSizeToggle(size)}
+                                className={`px-4 py-2 rounded-lg border-2 font-medium transition-all duration-200 ${sizes.includes(size)
+                                    ? "bg-blue-500 text-white border-blue-500 shadow-sm"
+                                    : "bg-white text-gray-700 border-gray-300 hover:border-blue-300 hover:bg-blue-50"
+                                    }`}
                             >
                                 {size}
                             </button>
                         ))}
                     </div>
+
+                    {/* Stock by Size */}
+                    {sizes.length > 0 && (
+                        <div className="bg-gray-50 rounded-lg p-4">
+                            <label className='block text-sm font-medium text-gray-700 mb-3'>Stock by Size *</label>
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
+                                {sizes.map(size => (
+                                    <div key={size} className="flex flex-col">
+                                        <label className="text-sm font-medium text-gray-600 mb-1">{size}</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            placeholder="0"
+                                            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                            value={sizeStocks[size] || ""}
+                                            onChange={(e) => setSizeStocks(prev => ({
+                                                ...prev,
+                                                [size]: parseInt(e.target.value) || 0
+                                            }))}
+                                            required
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                            
+                            {/* Display Total Stock (Read-only) */}
+                            <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm font-medium text-blue-900">Total Stock Quantity:</span>
+                                    <span className="text-lg font-bold text-blue-900">{totalStock}</span>
+                                </div>
+                                <p className="text-xs text-blue-700 mt-1">
+                                    This is calculated automatically from individual size stocks
+                                </p>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Bestseller */}
                 <div className="bg-gray-50 rounded-lg p-4">
                     <div className='flex items-center space-x-3'>
-                        <input 
-                            className='w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2' 
-                            onChange={() => setBestseller(prev => !prev)} 
-                            checked={bestseller} 
-                            type="checkbox" 
-                            id='bestseller' 
+                        <input
+                            className='w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2'
+                            onChange={() => setBestseller(prev => !prev)}
+                            checked={bestseller}
+                            type="checkbox"
+                            id='bestseller'
                         />
                         <label className='text-sm font-medium text-gray-700 cursor-pointer' htmlFor="bestseller">
                             Mark as Bestseller
@@ -399,9 +474,9 @@ const Add = ({token}) => {
                             <div className="flex space-x-4">
                                 <div className="w-20 h-20 bg-gray-100 rounded-lg flex-shrink-0">
                                     {image1 && (
-                                        <img 
-                                            src={URL.createObjectURL(image1)} 
-                                            alt="Preview" 
+                                        <img
+                                            src={URL.createObjectURL(image1)}
+                                            alt="Preview"
                                             className="w-full h-full object-cover rounded-lg"
                                         />
                                     )}
@@ -423,9 +498,13 @@ const Add = ({token}) => {
                                         <span className="text-xs text-gray-500">Sizes:</span>
                                         {sizes.map(size => (
                                             <span key={size} className="px-2 py-1 text-xs bg-gray-100 rounded">
-                                                {size}
+                                                {size} ({sizeStocks[size] || 0})
                                             </span>
                                         ))}
+                                    </div>
+                                    <div className="mt-2">
+                                        <span className="text-xs text-gray-500">Total Stock: </span>
+                                        <span className="text-sm font-medium text-gray-900">{totalStock}</span>
                                     </div>
                                 </div>
                             </div>
@@ -436,28 +515,27 @@ const Add = ({token}) => {
                 {/* Submit Button */}
                 <div className="flex justify-between items-center pt-6 border-t border-gray-200">
                     <div className="text-sm text-gray-500">
-                        {!name || !description || !price || sizes.length === 0 ? (
-                            <span className="text-red-500">Please fill in all required fields</span>
+                        {!name || !description || !price || sizes.length === 0 || totalStock === 0 ? (
+                            <span className="text-red-500">Please fill in all required fields and set stock quantities</span>
                         ) : (
                             <span className="text-green-500">✓ Ready to submit</span>
                         )}
                     </div>
                     <div className="flex space-x-3">
-                        <button 
+                        <button
                             type="button"
                             onClick={() => setShowPreview(!showPreview)}
                             className="px-6 py-3 font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors duration-200"
                         >
                             Preview
                         </button>
-                        <button 
-                            type="submit" 
-                            disabled={loading || !name || !description || !price || sizes.length === 0}
-                            className={`px-8 py-3 font-medium rounded-lg focus:ring-4 focus:ring-blue-200 transition-all duration-200 shadow-sm hover:shadow-md flex items-center space-x-2 ${
-                                loading || !name || !description || !price || sizes.length === 0
-                                    ? 'bg-gray-400 text-white cursor-not-allowed' 
-                                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                            }`}
+                        <button
+                            type="submit"
+                            disabled={loading || !name || !description || !price || sizes.length === 0 || totalStock === 0}
+                            className={`px-8 py-3 font-medium rounded-lg focus:ring-4 focus:ring-blue-200 transition-all duration-200 shadow-sm hover:shadow-md flex items-center space-x-2 ${loading || !name || !description || !price || sizes.length === 0 || totalStock === 0
+                                ? 'bg-gray-400 text-white cursor-not-allowed'
+                                : 'bg-blue-600 text-white hover:bg-blue-700'
+                                }`}
                         >
                             {loading && (
                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>

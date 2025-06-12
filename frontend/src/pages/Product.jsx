@@ -27,7 +27,14 @@ const Product = () => {
       toast.warning('Please select a size');
       return;
     }
-    
+
+    // Check size-specific stock - sizeStock is now a plain object, not a Map
+    const sizeStock = productData.sizeStock?.[size] || 0;
+    if (sizeStock <= 0) {
+      toast.error('This product is out of stock in the selected size');
+      return;
+    }
+
     addToCart(productData._id, size);
     toast.success(`${productData.name} (Size: ${size}) added to cart!`);
   };
@@ -38,6 +45,12 @@ const Product = () => {
   const hasHalfStar = averageRating % 1 >= 0.5;
   const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
   const ratingCount = productData?.ratingCount || 0;
+
+  // Check if all sizes are out of stock
+  const allSizesOutOfStock = productData?.sizes?.every(sizeItem => {
+    const sizeStock = productData.sizeStock?.[sizeItem] || 0;
+    return sizeStock <= 0;
+  }) || productData?.stockQuantity <= 0;
 
   if (!productData) {
     return <div className="text-center text-gray-500 py-10">Loading product...</div>;
@@ -94,15 +107,30 @@ const Product = () => {
             <p>Select Size</p>
             <div className='flex gap-2'>
               {productData.sizes?.length > 0 ? (
-                productData.sizes.map((item, index) => (
-                  <button
-                    onClick={() => setSize(item)}
-                    key={index}
-                    className={`border py-2 px-4 cursor-pointer bg-gray-100 ${item === size ? 'border-green-500' : ''}`}
-                  >
-                    {item}
-                  </button>
-                ))
+                productData.sizes.map((item, index) => {
+                  // Get stock for this specific size - sizeStock is now a plain object
+                  const sizeStock = productData.sizeStock?.[item] || 0;
+                  const isOutOfStock = sizeStock <= 0;
+                  const isSelected = item === size;
+                  
+                  return (
+                    <button
+                      onClick={() => !isOutOfStock && setSize(item)}
+                      key={index}
+                      className={`border py-2 px-4 transition-all duration-200 ${
+                        isOutOfStock 
+                          ? 'opacity-30 cursor-not-allowed bg-gray-200 text-gray-400 border-gray-300' 
+                          : isSelected
+                            ? 'border-green-500 bg-green-50 text-green-700 cursor-pointer'
+                            : 'bg-gray-100 hover:bg-gray-200 cursor-pointer border-gray-300'
+                      }`}
+                      disabled={isOutOfStock}
+                      title={isOutOfStock ? `Size ${item} is out of stock` : `Size ${item} - ${sizeStock} in stock`}
+                    >
+                      {item}
+                    </button>
+                  );
+                })
               ) : (
                 <p className="text-gray-400">No sizes available</p>
               )}
@@ -110,9 +138,14 @@ const Product = () => {
           </div>
           <button
             onClick={handleAddToCart}
-            className='bg-black text-white px-8 py-3 text-sm active:bg-gray-700 cursor-pointer'
+            className={`px-8 py-3 text-sm transition-all duration-200 ${
+              allSizesOutOfStock
+                ? 'bg-gray-400 text-white cursor-not-allowed opacity-60'
+                : 'bg-black text-white hover:bg-gray-800 cursor-pointer'
+            }`}
+            disabled={allSizesOutOfStock}
           >
-            ADD TO CART
+            {allSizesOutOfStock ? 'OUT OF STOCK' : 'ADD TO CART'}
           </button>
           <hr className='mt-8 sm:w-4/5' />
           <div className='text-sm text-gray-500 mt-5 flex flex-col gap-1'>

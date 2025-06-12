@@ -1,22 +1,22 @@
-import React, { useContext, useEffect, useState } from 'react' 
-import { ShopContext } from '../context/ShopContext' 
-import Title from './Title' 
+import React, { useContext, useEffect, useState } from 'react'
+import { ShopContext } from '../context/ShopContext'
+import Title from './Title'
 import ProductItem from './ProductItem'
 import { useNavigate } from 'react-router-dom'
 
 const RelatedProducts = ({ category, subCategory }) => {
     const { products, currency } = useContext(ShopContext)
     const [related, setRelated] = useState([])
-    const navigate = useNavigate() 
+    const navigate = useNavigate()
 
     useEffect(() => {
         if (products.length > 0) {
             let productsCopy = products.slice();
-            
+
             const categoryFiltered = productsCopy.filter(item => category === item.category);
-            
-            const subCategoryFiltered = categoryFiltered.filter(item =>subCategory === item.subCategory);
-            
+
+            const subCategoryFiltered = categoryFiltered.filter(item => subCategory === item.subCategory);
+
             setRelated(subCategoryFiltered.slice(0, 5));
         }
     }, [products, category, subCategory]);
@@ -38,8 +38,8 @@ const RelatedProducts = ({ category, subCategory }) => {
                 {
                     related.map((item, index) => (
                         <div key={index} onClick={() => handleProductClick(item._id)}>
-                            <ProductItem 
-                                name={item.name} id={item._id} price={item.price} image={item.image} currency={currency} 
+                            <ProductItem
+                                name={item.name} id={item._id} price={item.price} image={item.image} currency={currency} stockQuantity={item.stockQuantity}
                             />
                         </div>
                     ))

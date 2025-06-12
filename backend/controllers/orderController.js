@@ -1,7 +1,9 @@
 import orderModel from "../models/orderModel.js"
 import userModel from '../models/userModel.js';
+import productModel from '../models/productModel.js'; // Add this import
 import Stripe from 'stripe';
 import Paystack from "paystack";
+
 //global variables
 const currency = 'ngn'
 const deliveryCharge = 10
@@ -9,11 +11,139 @@ const deliveryCharge = 10
 //gateway interface
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 const paystack = Paystack(process.env.PAYSTACK_SECRET_KEY);
-// Placing orders using cod
 
+// Helper function to update stock for ordered items
+const updateProductStock = async (items) => {
+    try {
+        for (const item of items) {
+            const product = await productModel.findById(item._id);
+            if (!product) {
+                console.warn(`Product not found: ${item._id}`);
+                continue;
+            }
+
+            // Get current stock for the specific size
+            const currentSizeStock = product.sizeStock instanceof Map 
+                ? (product.sizeStock.get(item.size) || 0)
+                : (product.sizeStock?.[item.size] || 0);
+
+            // Calculate new stock (prevent negative stock)
+            const newSizeStock = Math.max(0, currentSizeStock - item.quantity);
+
+            // Update the specific size stock
+            const update = {
+                $set: {
+                    [`sizeStock.${item.size}`]: newSizeStock
+                }
+            };
+
+            await productModel.findByIdAndUpdate(item._id, update);
+
+            // Recalculate total stock from all sizes
+            const updatedProduct = await productModel.findById(item._id);
+            let totalStock = 0;
+            
+            if (updatedProduct.sizeStock instanceof Map) {
+                for (const [_, stock] of updatedProduct.sizeStock) {
+                    totalStock += stock || 0;
+                }
+            } else if (updatedProduct.sizeStock) {
+                Object.values(updatedProduct.sizeStock).forEach(stock => {
+                    totalStock += stock || 0;
+                });
+            }
+
+            // Update total stock quantity
+            await productModel.findByIdAndUpdate(item._id, { stockQuantity: totalStock });
+
+            console.log(`Stock updated for product ${item.name} (${item.size}): ${currentSizeStock} -> ${newSizeStock}, Total: ${totalStock}`);
+        }
+    } catch (error) {
+        console.error('Error updating stock:', error);
+        throw error;
+    }
+};
+
+// Helper function to restore stock (for failed orders)
+const restoreProductStock = async (items) => {
+    try {
+        for (const item of items) {
+            const product = await productModel.findById(item._id);
+            if (!product) {
+                console.warn(`Product not found: ${item._id}`);
+                continue;
+            }
+
+            // Get current stock for the specific size
+            const currentSizeStock = product.sizeStock instanceof Map 
+                ? (product.sizeStock.get(item.size) || 0)
+                : (product.sizeStock?.[item.size] || 0);
+
+            // Restore stock
+            const restoredSizeStock = currentSizeStock + item.quantity;
+
+            // Update the specific size stock
+            const update = {
+                $set: {
+                    [`sizeStock.${item.size}`]: restoredSizeStock
+                }
+            };
+
+            await productModel.findByIdAndUpdate(item._id, update);
+
+            // Recalculate total stock from all sizes
+            const updatedProduct = await productModel.findById(item._id);
+            let totalStock = 0;
+            
+            if (updatedProduct.sizeStock instanceof Map) {
+                for (const [_, stock] of updatedProduct.sizeStock) {
+                    totalStock += stock || 0;
+                }
+            } else if (updatedProduct.sizeStock) {
+                Object.values(updatedProduct.sizeStock).forEach(stock => {
+                    totalStock += stock || 0;
+                });
+            }
+
+            // Update total stock quantity
+            await productModel.findByIdAndUpdate(item._id, { stockQuantity: totalStock });
+
+            console.log(`Stock restored for product ${item.name} (${item.size}): ${currentSizeStock} -> ${restoredSizeStock}, Total: ${totalStock}`);
+        }
+    } catch (error) {
+        console.error('Error restoring stock:', error);
+        throw error;
+    }
+};
+
+// Validate stock availability before placing order
+const validateStockAvailability = async (items) => {
+    for (const item of items) {
+        const product = await productModel.findById(item._id);
+        if (!product) {
+            throw new Error(`Product not found: ${item.name}`);
+        }
+
+        const currentSizeStock = product.sizeStock instanceof Map 
+            ? (product.sizeStock.get(item.size) || 0)
+            : (product.sizeStock?.[item.size] || 0);
+
+        if (currentSizeStock < item.quantity) {
+            throw new Error(`Insufficient stock for ${item.name} (Size: ${item.size}). Available: ${currentSizeStock}, Requested: ${item.quantity}`);
+        }
+    }
+};
+
+// Placing orders using COD
 const placeOrder = async (req, res) => {
     try {
-        const { userId, items, amount, address } = req.body
+        const { userId, items, amount, address } = req.body;
+
+        // Validate stock availability first
+        await validateStockAvailability(items);
+
+        // Update stock before placing order
+        await updateProductStock(items);
 
         const orderData = {
             userId,
@@ -22,28 +152,32 @@ const placeOrder = async (req, res) => {
             amount,
             paymentMethod: "COD",
             payment: false
-        }
+        };
 
-        const newOrder = new orderModel(orderData)
-        await newOrder.save()
+        const newOrder = new orderModel(orderData);
+        await newOrder.save();
 
-        await userModel.findByIdAndUpdate(userId, { cartData: {} })
+        await userModel.findByIdAndUpdate(userId, { cartData: {} });
 
-        res.json({ success: true, message: "Order Placed" })
+        res.json({ success: true, message: "Order Placed" });
 
     } catch (error) {
         console.log(error);
-        res.json({ success: false, message: error.message })
-
+        res.json({ success: false, message: error.message });
     }
-}
+};
 
 // placing orders using Stripe method
 const placeOrderStripe = async (req, res) => {
     try {
-        const { userId, items, amount, address } = req.body
-        const { origin } = req.headers
+        const { userId, items, amount, address } = req.body;
+        const { origin } = req.headers;
 
+        // Validate stock availability first
+        await validateStockAvailability(items);
+
+        // Update stock before creating order
+        await updateProductStock(items);
 
         const orderData = {
             userId,
@@ -52,10 +186,10 @@ const placeOrderStripe = async (req, res) => {
             amount,
             paymentMethod: "Stripe",
             payment: false
-        }
+        };
 
-        const newOrder = new orderModel(orderData)
-        await newOrder.save()
+        const newOrder = new orderModel(orderData);
+        await newOrder.save();
 
         const line_items = items.map((item) => ({
             price_data: {
@@ -66,7 +200,7 @@ const placeOrderStripe = async (req, res) => {
                 unit_amount: item.price * 100
             },
             quantity: item.quantity
-        }))
+        }));
 
         line_items.push({
             price_data: {
@@ -77,45 +211,57 @@ const placeOrderStripe = async (req, res) => {
                 unit_amount: deliveryCharge * 100
             },
             quantity: 1
-        })
+        });
+
         const session = await stripe.checkout.sessions.create({
             success_url: `${origin}/verify?success=true&orderId=${newOrder._id}`,
             cancel_url: `${origin}/verify?success=false&orderId=${newOrder._id}`,
             line_items,
             mode: 'payment',
-        })
-        res.json({success:true,session_url:session.url})
+        });
+
+        res.json({ success: true, session_url: session.url });
     } catch (error) {
         console.log(error);
-        res.json({ success: false, message: error.message })
+        res.json({ success: false, message: error.message });
     }
-}
+};
 
 //verify Stripe
-
-const verifyStripe = async (req, res) =>{
-    const { orderId, success, userId } = req.body
+const verifyStripe = async (req, res) => {
+    const { orderId, success, userId } = req.body;
 
     try {
-        if(success === "true"){
-            await orderModel.findByIdAndUpdate(orderId ,{payment:true});
-            await userModel.findByIdAndUpdate(userId, {cartData: {}});
-            res.json({success:true});
-        }else{
+        if (success === "true") {
+            await orderModel.findByIdAndUpdate(orderId, { payment: true });
+            await userModel.findByIdAndUpdate(userId, { cartData: {} });
+            res.json({ success: true });
+        } else {
+            // If payment failed, restore stock and delete order
+            const order = await orderModel.findById(orderId);
+            if (order && order.items) {
+                await restoreProductStock(order.items);
+            }
             await orderModel.findByIdAndDelete(orderId);
-            res.json({success:false})
+            res.json({ success: false });
         }
     } catch (error) {
         console.log(error);
-        res.json({ success: false, message: error.message })        
+        res.json({ success: false, message: error.message });
     }
-}
+};
 
-// placing orders using Razorpay
+// placing orders using Paystack
 const placeOrderPaystack = async (req, res) => {
     try {
         const { userId, items, amount, address } = req.body;
         const { origin } = req.headers;
+
+        // Validate stock availability first
+        await validateStockAvailability(items);
+
+        // Update stock before creating order
+        await updateProductStock(items);
 
         const orderData = {
             userId,
@@ -154,7 +300,6 @@ const placeOrderPaystack = async (req, res) => {
 };
 
 //verify Paystack
-
 const verifyPaystack = async (req, res) => {
     const { orderId, reference } = req.body;
 
@@ -169,6 +314,11 @@ const verifyPaystack = async (req, res) => {
             }
             res.json({ success: true });
         } else {
+            // If payment failed, restore stock and delete order
+            const order = await orderModel.findById(orderId);
+            if (order && order.items) {
+                await restoreProductStock(order.items);
+            }
             await orderModel.findByIdAndDelete(orderId);
             res.json({ success: false });
         }
@@ -178,46 +328,49 @@ const verifyPaystack = async (req, res) => {
     }
 };
 
-
-
-
 //All orders data for Admin panel
-
 const allOrders = async (req, res) => {
     try {
-        const orders = await orderModel.find({})
-        res.json({ success: true, orders })
+        const orders = await orderModel.find({});
+        res.json({ success: true, orders });
     } catch (error) {
         console.log(error);
-        res.json({ success: false, message: error.message })
+        res.json({ success: false, message: error.message });
     }
-}
+};
 
 //user order for frontend
-
 const userOrders = async (req, res) => {
     try {
-        const { userId } = req.body
+        const { userId } = req.body;
 
-        const orders = await orderModel.find({ userId })
-        res.json({ success: true, orders })
+        const orders = await orderModel.find({ userId });
+        res.json({ success: true, orders });
     } catch (error) {
         console.log(error);
-        res.json({ success: false, message: error.message })
+        res.json({ success: false, message: error.message });
     }
-}
+};
 
 //update order status from admin panel
 const updateStatus = async (req, res) => {
     try {
-        const { orderId, status } = req.body
-        await orderModel.findByIdAndUpdate(orderId, { status })
-        res.json({ success: true, message: "Order status updated successfully" })
+        const { orderId, status } = req.body;
+        await orderModel.findByIdAndUpdate(orderId, { status });
+        res.json({ success: true, message: "Order status updated successfully" });
     } catch (error) {
         console.log(error);
-        res.json({ success: false, message: error.message })
-
+        res.json({ success: false, message: error.message });
     }
-}
+};
 
-export { verifyStripe, placeOrder, placeOrderStripe, placeOrderPaystack, allOrders, userOrders, updateStatus, verifyPaystack }
+export { 
+    verifyStripe, 
+    placeOrder, 
+    placeOrderStripe, 
+    placeOrderPaystack, 
+    allOrders, 
+    userOrders, 
+    updateStatus, 
+    verifyPaystack 
+};

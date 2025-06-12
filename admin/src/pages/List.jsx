@@ -24,6 +24,32 @@ const List = ({ token }) => {
         }
     }
 
+    // Only allow size-specific stock updates
+    const updateStock = async (productId, change, size) => {
+        if (!size) {
+            toast.error("Size must be specified for stock updates");
+            return;
+        }
+
+        try {
+            const response = await axios.post(
+                backendURL + "/api/product/update-stock",
+                { productId, quantity: change, size },
+                { headers: { token } }
+            );
+
+            if (response.data.success) {
+                toast.success(`Stock updated for size ${size}`);
+                await fetchList();
+            } else {
+                toast.error(response.data.message);
+            }
+        } catch (error) {
+            console.log(error);
+            toast.error(error.message);
+        }
+    };
+
     const removeProduct = async (id) => {
         try {
             const response = await axios.post(backendURL + '/api/product/remove', { id }, { headers: { token } })
@@ -78,6 +104,9 @@ const List = ({ token }) => {
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                     Price
                                 </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Stock Management
+                                </th>
                                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                                     Action
                                 </th>
@@ -88,9 +117,9 @@ const List = ({ token }) => {
                                 <tr key={index} className="hover:bg-gray-50 transition-colors duration-150">
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="flex-shrink-0 h-16 w-16">
-                                            <img 
-                                                className="h-16 w-16 rounded-lg object-cover border border-gray-200" 
-                                                src={item.image[0]} 
+                                            <img
+                                                className="h-16 w-16 rounded-lg object-cover border border-gray-200"
+                                                src={item.image[0]}
                                                 alt={item.name}
                                             />
                                         </div>
@@ -105,6 +134,57 @@ const List = ({ token }) => {
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
                                         {currency}{item.price}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="space-y-3">
+                                            {/* Total Stock Display (Read-only) */}
+                                            <div className="bg-gray-100 px-3 py-2 rounded-lg">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-sm font-medium text-gray-700">Total Stock:</span>
+                                                    <span className="text-lg font-bold text-gray-900">{item.stockQuantity || 0}</span>
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-1">Calculated from size stocks</p>
+                                            </div>
+
+                                            {/* Size-specific Stock Controls */}
+                                            {item.sizes && item.sizes.length > 0 ? (
+                                                <div className="space-y-2">
+                                                    <h4 className="text-xs font-medium text-gray-700 uppercase tracking-wide">Size Stock Management</h4>
+                                                    {item.sizes.map(size => {
+                                                        const sizeStock = item.sizeStock?.[size] || 0;
+                                                        return (
+                                                            <div key={size} className="flex items-center justify-between bg-white border rounded-lg px-3 py-2">
+                                                                <span className="text-sm font-medium text-gray-600 min-w-[1.5rem]">{size}:</span>
+                                                                <div className="flex items-center space-x-2">
+                                                                    <button
+                                                                        onClick={() => updateStock(item._id, -1, size)}
+                                                                        className="w-7 h-7 flex items-center justify-center bg-red-100 text-red-600 rounded hover:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                                                        disabled={sizeStock <= 0}
+                                                                        title={`Reduce ${size} stock`}
+                                                                    >
+                                                                        -
+                                                                    </button>
+                                                                    <span className="font-bold text-gray-900 min-w-[2rem] text-center text-sm">
+                                                                        {sizeStock}
+                                                                    </span>
+                                                                    <button
+                                                                        onClick={() => updateStock(item._id, 1, size)}
+                                                                        className="w-7 h-7 flex items-center justify-center bg-green-100 text-green-600 rounded hover:bg-green-200 transition-colors"
+                                                                        title={`Increase ${size} stock`}
+                                                                    >
+                                                                        +
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            ) : (
+                                                <div className="text-center py-4 bg-yellow-50 rounded-lg">
+                                                    <p className="text-sm text-yellow-700">No sizes defined for this product</p>
+                                                </div>
+                                            )}
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-center">
                                         <button
@@ -121,42 +201,85 @@ const List = ({ token }) => {
                 </div>
             </div>
 
-            {/* Mobile Card View */}
+            {/* Compact Mobile Card View */}
             <div className="md:hidden">
-                <div className="divide-y divide-gray-200">
+                <div className="divide-y divide-gray-100">
                     {list.map((item, index) => (
-                        <div key={index} className="p-4 bg-white">
-                            <div className="flex items-start space-x-4">
-                                <div className="flex-shrink-0">
-                                    <img 
-                                        className="h-16 w-16 rounded-lg object-cover border border-gray-200" 
-                                        src={item.image[0]} 
-                                        alt={item.name}
-                                    />
-                                </div>
+                        <div key={index} className="p-3 bg-white">
+                            {/* Top Row: Image, Name, Delete Button */}
+                            <div className="flex items-start space-x-3 mb-2">
+                                <img
+                                    className="h-16 w-16 rounded-lg object-cover border border-gray-200 flex-shrink-0"
+                                    src={item.image[0]}
+                                    alt={item.name}
+                                />
                                 <div className="flex-1 min-w-0">
-                                    <div className="flex items-start justify-between">
-                                        <div>
-                                            <p className="text-sm font-medium text-gray-900 truncate">
-                                                {item.name}
-                                            </p>
-                                            <div className="mt-1 flex items-center space-x-2">
-                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                                                    {item.category}
-                                                </span>
-                                                <span className="text-sm font-semibold text-gray-900">
-                                                    {currency}{item.price}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => removeProduct(item._id)}
-                                            className="cursor-pointer ml-2 inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-150"
-                                        >
-                                            Delete
-                                        </button>
+                                    <h3 className="text-sm font-semibold text-gray-900 leading-tight mb-1">
+                                        {item.name}
+                                    </h3>
+                                    <div className="flex items-center justify-between">
+                                        <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                                            {item.category}
+                                        </span>
+                                        <span className="text-sm font-bold text-gray-900">
+                                            {currency}{item.price}
+                                        </span>
                                     </div>
                                 </div>
+                                <button
+                                    onClick={() => removeProduct(item._id)}
+                                    className="px-2 py-1 text-xs font-medium rounded text-white bg-red-500 hover:bg-red-600 transition-colors flex-shrink-0"
+                                >
+                                    Delete
+                                </button>
+                            </div>
+
+                            {/* Stock Section */}
+                            <div className="bg-gray-50 rounded-lg p-2">
+                                {/* Total Stock - Compact */}
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="text-xs font-medium text-gray-600">Total Stock:</span>
+                                    <span className="text-sm font-bold text-gray-900">{item.stockQuantity || 0}</span>
+                                </div>
+
+                                {/* Size Stock Controls - Ultra Compact */}
+                                {item.sizes && item.sizes.length > 0 ? (
+                                    <div>
+                                        <p className="text-xs text-gray-500 mb-1">Size Stock:</p>
+                                        <div className="flex flex-wrap gap-1">
+                                            {item.sizes.map(size => {
+                                                const sizeStock = item.sizeStock?.[size] || 0;
+                                                return (
+                                                    <div key={size} className="flex items-center bg-white rounded border px-1 py-1">
+                                                        <span className="text-xs font-medium text-gray-700 mr-1">{size}</span>
+                                                        <div className="flex items-center">
+                                                            <button
+                                                                onClick={() => updateStock(item._id, -1, size)}
+                                                                className="w-5 h-5 flex items-center justify-center bg-red-100 text-red-600 rounded text-xs hover:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                disabled={sizeStock <= 0}
+                                                            >
+                                                                -
+                                                            </button>
+                                                            <span className="text-xs font-bold text-gray-900 mx-1 min-w-[1rem] text-center">
+                                                                {sizeStock}
+                                                            </span>
+                                                            <button
+                                                                onClick={() => updateStock(item._id, 1, size)}
+                                                                className="w-5 h-5 flex items-center justify-center bg-green-100 text-green-600 rounded text-xs hover:bg-green-200"
+                                                            >
+                                                                +
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-1 bg-yellow-50 rounded">
+                                        <p className="text-xs text-yellow-700">No sizes defined</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))}

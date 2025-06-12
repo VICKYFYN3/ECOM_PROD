@@ -1,3 +1,4 @@
+// productModel.js
 import mongoose from "mongoose";
 
 const productSchema = new mongoose.Schema({
@@ -11,9 +12,14 @@ const productSchema = new mongoose.Schema({
     image: {type: Array, required: true},
     date: {type: Number, required: true},
     averageRating: { type: Number, default: 0 },
-    ratingCount: { type: Number, default: 0 }
+    ratingCount: { type: Number, default: 0 },
+    stockQuantity: { type: Number, required: true, default: 0 },
+    sizeStock: { 
+        type: Map, 
+        of: Number,
+        default: {} 
+    }
 });
-
 
 const productModel = mongoose.models.product ||  mongoose.model("product", productSchema);
 

@@ -45,7 +45,7 @@ const Hero = () => {
                     
                     <img 
                         className="w-full h-full min-h-[450px] sm:min-h-full object-cover object-center" 
-                        src="https://res.cloudinary.com/duvxwhiho/image/upload/v1749837333/hero_img_zxdqrx.png"
+                        src="https://res.cloudinary.com/duvxwhiho/image/upload/v1749837940/hero_img_1_mtcf66.png"
                         alt="Latest arrivals hero image" 
                     />
                     

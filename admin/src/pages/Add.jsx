@@ -376,8 +376,8 @@ const Add = ({ token }) => {
                             <button
                                 type="button"
                                 onClick={() => {
-                                    setSizes(['S', 'M', 'L', 'XL', 'XXL']);
-                                    setSizeStocks({ S: 0, M: 0, L: 0, XL: 0, XXL: 0 });
+                                    setSizes(['S', 'M', 'L', 'XL', 'XXL', 'XXXL','XXXXL']);
+                                    setSizeStocks({ S: 0, M: 0, L: 0, XL: 0, XXL: 0 ,XXXL: 0,XXXXL:0});
                                 }}
                                 className="px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded-full hover:bg-blue-100 transition-colors"
                             >
@@ -396,7 +396,7 @@ const Add = ({ token }) => {
                         </div>
                     </div>
                     <div className='flex flex-wrap gap-3 mb-4'>
-                        {['S', 'M', 'L', 'XL', 'XXL'].map((size) => (
+                        {['S', 'M', 'L', 'XL','XXL','XXXL','XXXXL'].map((size) => (
                             <button
                                 key={size}
                                 type="button"

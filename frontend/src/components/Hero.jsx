@@ -1,6 +1,5 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { assets } from '../assets/assets';
 
 const Hero = () => {
     const navigate = useNavigate();
@@ -46,7 +45,7 @@ const Hero = () => {
                     
                     <img 
                         className="w-full h-full min-h-[450px] sm:min-h-full object-cover object-center" 
-                        src={assets.hero_img} 
+                        src="https://res.cloudinary.com/duvxwhiho/image/upload/v1749837333/hero_img_zxdqrx.png"
                         alt="Latest arrivals hero image" 
                     />
                     

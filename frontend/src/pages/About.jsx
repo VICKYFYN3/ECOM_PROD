@@ -1,6 +1,5 @@
 import React from 'react'
 import Title from '../components/Title'
-import { assets } from '../assets/assets'
 import NewsLetterBox from '../components/NewsLetterBox'
 const About = () => {
   return (
@@ -9,7 +8,7 @@ const About = () => {
         <Title text1={'ABOUT'} text2={'US'} />
       </div>
       <div className='my-10 flex flex-col md:flex-row gap-16'>
-        <img className='w-full md:max-w-[450px]' src={assets.about_img} alt="" />
+        <img className='w-full md:max-w-[450px]' src="https://res.cloudinary.com/duvxwhiho/image/upload/v1749836333/about_img_rhpm8a.png" alt="" />
         <div className='flex flex-col justify-center gap-6 md:w-2/4 text-gray-600'>
           <p>Lorem, ipsum dolor sit amet consectetur adipisicing elit. Excepturi ratione provident omnis tenetur, eaque harum voluptatem impedit! Ut fugiat alias ipsam ipsa quae quibusdam consectetur soluta beatae. Quae, porro voluptate.</p>
           <p>Lorem, ipsum dolor sit amet consectetur adipisicing elit. Excepturi ratione provident omnis tenetur, eaque harum voluptatem impedit! Ut fugiat alias ipsam ipsa quae quibusdam consectetur soluta beatae. Quae, porro voluptate.</p>

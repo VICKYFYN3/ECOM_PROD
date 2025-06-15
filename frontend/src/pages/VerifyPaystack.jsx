@@ -1,5 +1,5 @@
-import React from 'react'
-import { useContext } from 'react'
+import React from 'react';
+import { useContext } from 'react';
 import { ShopContext } from './../context/ShopContext';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
@@ -7,42 +7,54 @@ import axios from 'axios';
 import { toast } from 'sonner';
 
 const VerifyPaystack = () => {
-    const navigate = useNavigate()
-    const { token,setCartItems,backendURL } = useContext(ShopContext)
-    const [searchParams] = useSearchParams()
+    const navigate = useNavigate();
+    const { token, setCartItems, backendURL } = useContext(ShopContext);
+    const [searchParams] = useSearchParams();
 
-    const success = searchParams.get('success')
-    const orderId = searchParams.get('orderId')
+    const orderId = searchParams.get('orderId');
+    const reference = searchParams.get('reference');
 
     const verifyPayment = async () => {
         try {
-            if (!token) {
-                return null
+            if (!token || !reference) {
+                navigate('/');
+                return;
             }
             
-            const response = await axios.post(backendURL+'/api/order/verifyPaystack',{success,orderId},{headers:{token}})
+            const response = await axios.post(
+                `${backendURL}/api/order/verifyPaystack`,
+                { orderId, reference },
+                { headers: { token } }
+            );
+            
             if (response.data.success) {
-                setCartItems({})
-                toast.success("Paystack payment successful")
-                navigate('/orders')
-            }else{
-                navigate('/cart')
+                setCartItems({});
+                toast.success("Payment successful!");
+                navigate('/orders');
+            } else {
+                toast.error("Payment verification failed");
+                navigate('/cart');
             }
         } catch (error) {
             console.log(error);
             toast.error(error.message);
+            navigate('/cart');
         }
-    }
+    };
 
-    useEffect(()=>{
-        verifyPayment()
-    },[token])
+    useEffect(() => {
+        if (reference && orderId) {
+            verifyPayment();
+        } else {
+            navigate('/');
+        }
+    }, [token, reference, orderId]);
 
     return (
-        <div>
+        <div className="min-h-screen flex items-center justify-center">
             
         </div>
-    )
-}
+    );
+};
 
-export default VerifyPaystack
+export default VerifyPaystack;

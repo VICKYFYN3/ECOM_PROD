@@ -301,10 +301,12 @@ const placeOrderPaystack = async (req, res) => {
 
 //verify Paystack
 const verifyPaystack = async (req, res) => {
-    const { orderId, success } = req.body; // Changed from reference to success
+    const { orderId, reference } = req.body;
 
     try {
-        if (success === "true") {
+        const transaction = await paystack.transaction.verify(reference);
+        
+        if (transaction.data.status === 'success') {
             await orderModel.findByIdAndUpdate(orderId, { payment: true });
             const order = await orderModel.findById(orderId);
             if (order) {

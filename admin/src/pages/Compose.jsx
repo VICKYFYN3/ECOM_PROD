@@ -53,7 +53,7 @@ const Compose = ({ token }) => {
 
             console.log('Uploading file:', file.name, 'Size:', file.size, 'Type:', file.type);
 
-            const response = await axios.post(`${backendURL}/api/upload/newsletter-image`, formData, {
+            const response = await axios.post(`${backendURL}/api/user/upload/newsletter-image`, formData, {
                 headers: { 
                     token,
                     'Content-Type': 'multipart/form-data'

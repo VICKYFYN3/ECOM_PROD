@@ -7,7 +7,20 @@ const getUserReviews = async (req, res) => {
     try {
         const reviews = await reviewModel.find({ userId: req.body.userId })
             .populate('productId', 'name image');
-        res.json({ success: true, reviews });
+        
+        // Transform the data to match frontend expectations
+        const transformedReviews = reviews.map(review => ({
+            _id: review._id,
+            rating: review.rating,
+            createdAt: review.createdAt,
+            product: {
+                _id: review.productId._id,
+                name: review.productId.name,
+                image: review.productId.image
+            }
+        }));
+        
+        res.json({ success: true, reviews: transformedReviews });
     } catch (error) {
         res.json({ success: false, message: error.message });
     }
@@ -83,15 +96,21 @@ const deleteReview = async (req, res) => {
 
 const getReviewableProducts = async (req, res) => {
     try {
+        console.log('Getting reviewable products for user:', req.body.userId);
+        
         const orders = await orderModel.find({
             userId: req.body.userId,
-            status: 'Delivered'
+            status: 'delivered'
         });
+
+        console.log('Found delivered orders:', orders.length);
 
         // Get all product IDs that the user has already reviewed
         const reviewedProducts = await reviewModel.find({
             userId: req.body.userId
         }).distinct('productId');
+
+        console.log('Already reviewed products:', reviewedProducts.length);
 
         // Convert to strings for comparison
         const reviewedProductIds = reviewedProducts.map(id => id.toString());
@@ -99,30 +118,40 @@ const getReviewableProducts = async (req, res) => {
         const reviewableProducts = [];
         
         orders.forEach(order => {
+            console.log('Processing order:', order._id, 'with', order.items.length, 'items');
             order.items.forEach(item => {
-                // Make sure item has an _id and hasn't been reviewed
-                if (item._id && !reviewedProductIds.includes(item._id.toString())) {
+                // The item contains the product's _id, not its own _id
+                const productId = item._id;
+                
+                console.log('Checking item:', item.name, 'with productId:', productId);
+                
+                // Make sure item has a product ID and hasn't been reviewed
+                if (productId && !reviewedProductIds.includes(productId.toString())) {
                     // Check if this product is already in our reviewableProducts array
                     const exists = reviewableProducts.some(p => 
-                        p._id.toString() === item._id.toString()
+                        p._id.toString() === productId.toString()
                     );
                     
                     if (!exists) {
                         reviewableProducts.push({
-                            _id: item._id,
+                            _id: productId,
                             name: item.name,
                             image: item.image,
                             createdAt: order.createdAt
                         });
+                        console.log('Added reviewable product:', item.name);
                     }
+                } else {
+                    console.log('Skipping item:', item.name, '- already reviewed or no productId');
                 }
             });
         });
 
+        console.log('Final reviewable products:', reviewableProducts.length);
+
         res.json({
             success: true,
-            reviews: reviews,
-            reviewableProducts: reviewableProducts
+            products: reviewableProducts
         });
     } catch (error) {
         console.error('Error in getReviewableProducts:', error);

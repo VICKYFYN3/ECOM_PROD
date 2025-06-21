@@ -163,7 +163,7 @@ const Reviews = () => {
                                 <div className="flex flex-col items-center text-center">
                                     <div className="w-20 h-20 bg-gray-200 rounded-md overflow-hidden mb-3">
                                         <img
-                                            src={product.image?.[0] || assets.default_product}
+                                            src={product.image?.[0] || product.image}
                                             alt={product.name}
                                             className="w-full h-full object-cover"
                                         />
@@ -203,7 +203,7 @@ const Reviews = () => {
                             <div className="flex items-center gap-3 mb-6 p-3 bg-gray-50 rounded-lg">
                                 <div className="flex-shrink-0 w-16 h-16 bg-gray-200 rounded-md overflow-hidden">
                                     <img
-                                        src={selectedProduct.image?.[0] || assets.default_product}
+                                        src={selectedProduct.image?.[0] || selectedProduct.image}
                                         alt={selectedProduct.name}
                                         className="w-full h-full object-cover"
                                     />
@@ -298,7 +298,7 @@ const Reviews = () => {
                                     <div className="flex items-center gap-3">
                                         <div className="w-12 h-12 bg-gray-200 rounded-md overflow-hidden">
                                             <img
-                                                src={review.product?.image?.[0] || assets.default_product}
+                                                src={review.product?.image?.[0] || review.product?.image}
                                                 alt={review.product?.name || 'Product'}
                                                 className="w-full h-full object-cover"
                                             />

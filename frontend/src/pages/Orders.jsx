@@ -46,16 +46,12 @@ const Orders = () => {
     if (activeTab === 'ongoing') {
       return orderData.filter(item => {
         const status = item.status?.toLowerCase().trim();
-        return status !== 'delivered' && 
-               status !== 'cancelled' && 
-               status !== 'returned';
+        return status !== 'delivered';
       });
     } else {
       return orderData.filter(item => {
         const status = item.status?.toLowerCase().trim();
-        return status === 'delivered' || 
-               status === 'cancelled' || 
-               status === 'returned';
+        return status === 'delivered';
       });
     }
   };
@@ -65,9 +61,7 @@ const Orders = () => {
   // Check if order status allows tracking
   const canTrackOrder = (status) => {
     const normalizedStatus = status?.toLowerCase().trim();
-    return normalizedStatus !== 'delivered' && 
-           normalizedStatus !== 'cancelled' && 
-           normalizedStatus !== 'returned';
+    return normalizedStatus !== 'delivered';
   };
 
   if (loading) {
@@ -147,8 +141,6 @@ const Orders = () => {
                 <div className='flex items-center gap-2'>
                   <p className={`min-w-2 h-2 rounded-full ${
                     item.status === 'delivered' ? 'bg-green-500' :
-                    item.status === 'cancelled' ? 'bg-red-500' :
-                    item.status === 'returned' ? 'bg-orange-500' :
                     'bg-blue-500'
                   }`}></p>
                   <p className='text-sm md:text-base capitalize'>{item.status}</p>

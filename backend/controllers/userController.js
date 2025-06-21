@@ -476,11 +476,24 @@ const uploadNewsletterImage = async (req, res) => {
             return res.status(400).json({ success: false, message: 'No image file provided' });
         }
 
+        console.log('File received:', req.file);
+
+        // Check if cloudinary is configured
+        if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+            console.error('Cloudinary configuration missing');
+            return res.status(500).json({ 
+                success: false, 
+                message: 'Image upload service not configured' 
+            });
+        }
+
         // Upload to Cloudinary
         const result = await cloudinary.uploader.upload(req.file.path, {
             resource_type: 'image',
             folder: 'newsletter-images'
         });
+
+        console.log('Cloudinary upload result:', result);
 
         res.json({ 
             success: true, 
@@ -490,9 +503,21 @@ const uploadNewsletterImage = async (req, res) => {
 
     } catch (error) {
         console.error('Newsletter image upload error:', error);
+        
+        // Provide more specific error messages
+        let errorMessage = 'An error occurred while uploading the image';
+        if (error.message.includes('Invalid API credentials')) {
+            errorMessage = 'Image upload service configuration error';
+        } else if (error.message.includes('File too large')) {
+            errorMessage = 'Image file is too large';
+        } else if (error.message.includes('Invalid file type')) {
+            errorMessage = 'Invalid image file type';
+        }
+        
         res.status(500).json({ 
             success: false, 
-            message: 'An error occurred while uploading the image' 
+            message: errorMessage,
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 };

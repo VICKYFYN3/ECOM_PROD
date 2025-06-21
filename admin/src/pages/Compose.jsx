@@ -51,12 +51,16 @@ const Compose = ({ token }) => {
             const formData = new FormData();
             formData.append('image', file);
 
+            console.log('Uploading file:', file.name, 'Size:', file.size, 'Type:', file.type);
+
             const response = await axios.post(`${backendURL}/api/upload/newsletter-image`, formData, {
                 headers: { 
                     token,
                     'Content-Type': 'multipart/form-data'
                 }
             });
+
+            console.log('Upload response:', response.data);
 
             if (response.data.success) {
                 setSelectedImage(response.data.imageUrl);
@@ -66,7 +70,24 @@ const Compose = ({ token }) => {
                 toast.error(response.data.message || 'Failed to upload image');
             }
         } catch (error) {
-            toast.error('Failed to upload image');
+            console.error('Upload error:', error);
+            
+            let errorMessage = 'Failed to upload image';
+            if (error.response) {
+                // Server responded with error
+                errorMessage = error.response.data.message || errorMessage;
+                console.error('Server error:', error.response.data);
+            } else if (error.request) {
+                // Network error
+                errorMessage = 'Network error. Please check your connection.';
+                console.error('Network error:', error.request);
+            } else {
+                // Other error
+                errorMessage = error.message || errorMessage;
+                console.error('Other error:', error.message);
+            }
+            
+            toast.error(errorMessage);
         } finally {
             setIsUploading(false);
         }
@@ -159,28 +180,43 @@ const Compose = ({ token }) => {
                     <label className="block text-gray-700 font-medium mb-2">Newsletter Image (Optional)</label>
                     
                     {!selectedImage ? (
-                        <div
-                            className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors cursor-pointer"
-                            onDrop={handleDrop}
-                            onDragOver={handleDragOver}
-                            onClick={() => document.getElementById('imageInput').click()}
-                        >
-                            <div className="space-y-2">
-                                <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                                <div className="text-gray-600">
-                                    <span className="font-medium">Click to upload</span> or drag and drop
+                        <div className="space-y-3">
+                            <div
+                                className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors"
+                                onDrop={handleDrop}
+                                onDragOver={handleDragOver}
+                            >
+                                <div className="space-y-2">
+                                    <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                                        <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                    <div className="text-gray-600">
+                                        <span className="font-medium">Drag and drop</span> your image here
+                                    </div>
+                                    <p className="text-xs text-gray-500">PNG, JPG, GIF up to 5MB</p>
                                 </div>
-                                <p className="text-xs text-gray-500">PNG, JPG, GIF up to 5MB</p>
                             </div>
-                            <input
-                                id="imageInput"
-                                type="file"
-                                accept="image/*"
-                                onChange={handleFileChange}
-                                className="hidden"
-                            />
+                            
+                            <div className="text-center">
+                                <span className="text-gray-500 text-sm">or</span>
+                            </div>
+                            
+                            <div className="text-center">
+                                <button
+                                    type="button"
+                                    onClick={() => document.getElementById('imageInput').click()}
+                                    className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors font-medium"
+                                >
+                                    Select Image
+                                </button>
+                                <input
+                                    id="imageInput"
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleFileChange}
+                                    className="hidden"
+                                />
+                            </div>
                         </div>
                     ) : (
                         <div className="relative">
@@ -202,7 +238,8 @@ const Compose = ({ token }) => {
                     )}
                     
                     {isUploading && (
-                        <div className="mt-2 text-sm text-blue-600">
+                        <div className="mt-2 text-sm text-blue-600 flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
                             Uploading image...
                         </div>
                     )}

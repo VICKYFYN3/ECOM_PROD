@@ -98,9 +98,18 @@ const getReviewableProducts = async (req, res) => {
     try {
         console.log('Getting reviewable products for user:', req.body.userId);
         
+        // First, let's check all orders for this user
+        const allOrders = await orderModel.find({ userId: req.body.userId });
+        console.log('Total orders for user:', allOrders.length);
+        
+        // Log all order statuses
+        allOrders.forEach(order => {
+            console.log('Order ID:', order._id, 'Status:', order.status, 'Items:', order.items.length);
+        });
+        
         const orders = await orderModel.find({
             userId: req.body.userId,
-            status: 'delivered'
+            status: 'Delivered'
         });
 
         console.log('Found delivered orders:', orders.length);

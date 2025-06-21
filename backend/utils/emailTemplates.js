@@ -21,7 +21,7 @@ export const getEmailTemplate = (subject, message, preheader = '') => {
                 <!-- Header -->
                 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 20px; text-align: center;">
                     <a href="http://your-store.com" target="_blank">
-                        <img src="https://res.cloudinary.com/duvxwhiho/image/upload/v1749069069/logo_vl94iv.png" alt="Forever Logo" style="max-width: 100px; height: auto; background-color: white; padding: 20px;">
+                        <img src="https://res.cloudinary.com/duvxwhiho/image/upload/v1749069069/logo_vl94iv.png" alt="Forever Logo" style="max-width: 100px; border-radius: 5px; height: auto; background-color: white; padding: 20px;">
                     </a>
                     <h2 style="color: white; margin: 20px 0 0; font-size: 28px; font-weight: 600; letter-spacing: 0.5px;">${subject}</h2>
                 </div>

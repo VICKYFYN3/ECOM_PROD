@@ -44,17 +44,19 @@ const Orders = () => {
   // Filter orders based on active tab
   const getFilteredOrders = () => {
     if (activeTab === 'ongoing') {
-      return orderData.filter(item => 
-        item.status !== 'delivered' && 
-        item.status !== 'cancelled' && 
-        item.status !== 'returned'
-      );
+      return orderData.filter(item => {
+        const status = item.status?.toLowerCase().trim();
+        return status !== 'delivered' && 
+               status !== 'cancelled' && 
+               status !== 'returned';
+      });
     } else {
-      return orderData.filter(item => 
-        item.status === 'delivered' || 
-        item.status === 'cancelled' || 
-        item.status === 'returned'
-      );
+      return orderData.filter(item => {
+        const status = item.status?.toLowerCase().trim();
+        return status === 'delivered' || 
+               status === 'cancelled' || 
+               status === 'returned';
+      });
     }
   };
 
@@ -62,7 +64,10 @@ const Orders = () => {
 
   // Check if order status allows tracking
   const canTrackOrder = (status) => {
-    return status !== 'delivered' && status !== 'cancelled' && status !== 'returned';
+    const normalizedStatus = status?.toLowerCase().trim();
+    return normalizedStatus !== 'delivered' && 
+           normalizedStatus !== 'cancelled' && 
+           normalizedStatus !== 'returned';
   };
 
   if (loading) {

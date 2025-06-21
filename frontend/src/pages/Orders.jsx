@@ -1,13 +1,14 @@
 import { ShopContext } from '../context/ShopContext';
 import Title from '../components/Title';
 import axios from 'axios';
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState, useRef } from 'react';
 
 const Orders = () => {
   const { backendURL, token, currency } = useContext(ShopContext);
   const [orderData, setOrderData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('ongoing'); // 'ongoing' or 'completed'
+  const contentRef = useRef(null);
 
   const loadOrderData = async () => {
     try {
@@ -41,6 +42,16 @@ const Orders = () => {
     loadOrderData()
   }, [token])
 
+  // Smooth scroll to content when tab changes
+  useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'start' 
+      });
+    }
+  }, [activeTab]);
+
   // Filter orders based on active tab
   const getFilteredOrders = () => {
     if (activeTab === 'ongoing') {
@@ -64,101 +75,170 @@ const Orders = () => {
     return normalizedStatus !== 'delivered';
   };
 
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+  };
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <span className="ml-3 text-gray-600">Loading orders...</span>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="bg-white rounded-xl shadow-sm p-8 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <span className="text-gray-600">Loading your orders...</span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className='border-t pt-16'>
-      <div className='text-2xl mb-8'>
-        <Title text1={'MY'} text2={'ORDERS'} />
-      </div>
-      
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200 mb-6">
-        <button
-          onClick={() => setActiveTab('ongoing')}
-          className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'ongoing'
-              ? 'border-purple-500 text-purple-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-          }`}
-        >
-          Ongoing Orders
-        </button>
-        <button
-          onClick={() => setActiveTab('completed')}
-          className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'completed'
-              ? 'border-purple-500 text-purple-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-          }`}
-        >
-          Completed Orders
-        </button>
-      </div>
-      
-      {filteredOrders.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-            <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-            </svg>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header Section */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="text-center md:text-left">
+            <Title text1={'MY'} text2={'ORDERS'} />
+            <p className="mt-2 text-gray-600">Track and manage your orders</p>
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            {activeTab === 'ongoing' ? 'No ongoing orders' : 'No completed orders'}
-          </h3>
-          <p className="text-gray-500">
-            {activeTab === 'ongoing' 
-              ? 'You don\'t have any orders in progress.' 
-              : 'You don\'t have any completed orders yet.'
-            }
-          </p>
         </div>
-      ) : (
-        <div>
-          {filteredOrders.map((item, index) => (
-            <div key={index} className='py-4 border-t border-b text-gray-700 flex flex-col md:flex-row md:items-center md:justify-between gap-4'>
-              <div className='flex items-start gap-6 text-sm'>
-                <img className='w-16 sm:w-20' src={item.image[0]} alt="" />
-                <div>
-                  <p className='text-lg font-semibold'>{item.name}</p>
-                  <div className='flex items-center gap-3 mt-1 text-base text-gray-700'>
-                    <p >{currency}{item.price}</p>
-                    <p>Quantity: {item.quantity}</p>
-                    <p>Size: {item.size}</p>
-                  </div>
-                  <p className='mt-1'>Date: <span className='text-gray-400'>{new Date(item.date).toDateString()}</span></p>
-                  <p className='mt-1'>Payment: <span className='text-gray-400'>{item.paymentMethod}</span></p>
-                </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Enhanced Tabs */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
+          <div className="flex">
+            <button
+              onClick={() => handleTabChange('ongoing')}
+              className={`flex-1 px-6 py-4 text-sm font-medium transition-all duration-200 relative ${
+                activeTab === 'ongoing'
+                  ? 'bg-gradient-to-r from-purple-50 to-pink-50 text-purple-700 border-b-2 border-purple-500'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Ongoing Orders</span>
               </div>
-              <div className='md:w-1/2 flex justify-between'>
-                <div className='flex items-center gap-2'>
-                  <p className={`min-w-2 h-2 rounded-full ${
-                    item.status === 'delivered' ? 'bg-green-500' :
-                    'bg-blue-500'
-                  }`}></p>
-                  <p className='text-sm md:text-base capitalize'>{item.status}</p>
-                </div>
-                {canTrackOrder(item.status) && (
-                  <button 
-                    type="button" 
-                    onClick={loadOrderData} 
-                    className='cursor-pointer border px-4 py-2 text-sm font-medium rounded-sm hover:bg-gray-50 transition-colors'
-                  >
-                    Track Order
-                  </button>
-                )}
+            </button>
+            <button
+              onClick={() => handleTabChange('completed')}
+              className={`flex-1 px-6 py-4 text-sm font-medium transition-all duration-200 relative ${
+                activeTab === 'completed'
+                  ? 'bg-gradient-to-r from-purple-50 to-pink-50 text-purple-700 border-b-2 border-purple-500'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Completed Orders</span>
               </div>
+            </button>
+          </div>
+        </div>
+        
+        {/* Content Section */}
+        <div ref={contentRef}>
+          {filteredOrders.length === 0 ? (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
+              <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-purple-100 to-pink-100 rounded-full flex items-center justify-center">
+                <svg className="w-12 h-12 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                {activeTab === 'ongoing' ? 'No ongoing orders' : 'No completed orders'}
+              </h3>
+              <p className="text-gray-500 max-w-md mx-auto">
+                {activeTab === 'ongoing' 
+                  ? 'You don\'t have any orders in progress. Start shopping to see your orders here.' 
+                  : 'You don\'t have any completed orders yet. Complete some orders to see them here.'
+                }
+              </p>
+              {activeTab === 'ongoing' && (
+                <button 
+                  onClick={() => window.location.href = '/collection'}
+                  className="mt-6 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all duration-200 font-medium"
+                >
+                  Start Shopping
+                </button>
+              )}
             </div>
-          ))}
+          ) : (
+            <div className="space-y-4">
+              {filteredOrders.map((item, index) => (
+                <div key={index} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow duration-200">
+                  <div className="p-6">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                      {/* Product Info */}
+                      <div className="flex items-start gap-4 flex-1">
+                        <div className="w-20 h-20 lg:w-24 lg:h-24 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                          <img 
+                            className="w-full h-full object-cover" 
+                            src={item.image[0]} 
+                            alt={item.name} 
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">{item.name}</h3>
+                          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-gray-600">
+                            <div>
+                              <span className="font-medium">Price:</span>
+                              <p className="text-gray-900 font-semibold">{currency}{item.price}</p>
+                            </div>
+                            <div>
+                              <span className="font-medium">Quantity:</span>
+                              <p>{item.quantity}</p>
+                            </div>
+                            <div>
+                              <span className="font-medium">Size:</span>
+                              <p>{item.size}</p>
+                            </div>
+                            <div>
+                              <span className="font-medium">Payment:</span>
+                              <p className="capitalize">{item.paymentMethod}</p>
+                            </div>
+                          </div>
+                          <div className="mt-3 text-sm text-gray-500">
+                            <span className="font-medium">Order Date:</span> {new Date(item.date).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Status and Actions */}
+                      <div className="flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-6">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-3 h-3 rounded-full ${
+                            item.status === 'delivered' ? 'bg-green-500' :
+                            'bg-blue-500'
+                          }`}></div>
+                          <span className="text-sm font-medium capitalize text-gray-900">{item.status}</span>
+                        </div>
+                        
+                        {canTrackOrder(item.status) && (
+                          <button 
+                            type="button" 
+                            onClick={loadOrderData} 
+                            className="px-6 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all duration-200 font-medium text-sm"
+                          >
+                            Track Order
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }

@@ -8,6 +8,9 @@ const Compose = ({ token }) => {
     const [message, setMessage] = useState('');
     const [subscriberCount, setSubscriberCount] = useState(0);
     const [isSending, setIsSending] = useState(false);
+    const [selectedImage, setSelectedImage] = useState(null);
+    const [imagePreview, setImagePreview] = useState(null);
+    const [isUploading, setIsUploading] = useState(false);
 
     useEffect(() => {
         const fetchSubscriberCount = async () => {
@@ -28,6 +31,74 @@ const Compose = ({ token }) => {
         }
     }, [token]);
 
+    const handleImageUpload = async (file) => {
+        if (!file) return;
+
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+            toast.error('Please select a valid image file');
+            return;
+        }
+
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            toast.error('Image size should be less than 5MB');
+            return;
+        }
+
+        setIsUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append('image', file);
+
+            const response = await axios.post(`${backendURL}/api/upload/newsletter-image`, formData, {
+                headers: { 
+                    token,
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+
+            if (response.data.success) {
+                setSelectedImage(response.data.imageUrl);
+                setImagePreview(URL.createObjectURL(file));
+                toast.success('Image uploaded successfully');
+            } else {
+                toast.error(response.data.message || 'Failed to upload image');
+            }
+        } catch (error) {
+            toast.error('Failed to upload image');
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const handleFileChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            handleImageUpload(file);
+        }
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        const file = e.dataTransfer.files[0];
+        if (file) {
+            handleImageUpload(file);
+        }
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+    };
+
+    const removeImage = () => {
+        setSelectedImage(null);
+        setImagePreview(null);
+        if (imagePreview) {
+            URL.revokeObjectURL(imagePreview);
+        }
+    };
+
     const onSendHandler = async (e) => {
         e.preventDefault();
         if (!subject || !message) {
@@ -37,7 +108,13 @@ const Compose = ({ token }) => {
 
         setIsSending(true);
         try {
-            const response = await axios.post(`${backendURL}/api/user/newsletter/send`, { subject, message }, {
+            const newsletterData = {
+                subject,
+                message,
+                imageUrl: selectedImage
+            };
+
+            const response = await axios.post(`${backendURL}/api/user/newsletter/send`, newsletterData, {
                 headers: { token }
             });
 
@@ -45,6 +122,7 @@ const Compose = ({ token }) => {
                 toast.success(response.data.message);
                 setSubject('');
                 setMessage('');
+                removeImage();
             } else {
                 toast.error(response.data.message);
             }
@@ -75,6 +153,61 @@ const Compose = ({ token }) => {
                         required
                     />
                 </div>
+
+                {/* Image Upload Section */}
+                <div className="mb-4">
+                    <label className="block text-gray-700 font-medium mb-2">Newsletter Image (Optional)</label>
+                    
+                    {!selectedImage ? (
+                        <div
+                            className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors cursor-pointer"
+                            onDrop={handleDrop}
+                            onDragOver={handleDragOver}
+                            onClick={() => document.getElementById('imageInput').click()}
+                        >
+                            <div className="space-y-2">
+                                <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                                <div className="text-gray-600">
+                                    <span className="font-medium">Click to upload</span> or drag and drop
+                                </div>
+                                <p className="text-xs text-gray-500">PNG, JPG, GIF up to 5MB</p>
+                            </div>
+                            <input
+                                id="imageInput"
+                                type="file"
+                                accept="image/*"
+                                onChange={handleFileChange}
+                                className="hidden"
+                            />
+                        </div>
+                    ) : (
+                        <div className="relative">
+                            <img
+                                src={imagePreview}
+                                alt="Newsletter preview"
+                                className="w-full max-h-64 object-cover rounded-lg border border-gray-200"
+                            />
+                            <button
+                                type="button"
+                                onClick={removeImage}
+                                className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                    )}
+                    
+                    {isUploading && (
+                        <div className="mt-2 text-sm text-blue-600">
+                            Uploading image...
+                        </div>
+                    )}
+                </div>
+
                 <div className="mb-4">
                     <label htmlFor="message" className="block text-gray-700 font-medium mb-2">Message</label>
                     <textarea
@@ -83,12 +216,13 @@ const Compose = ({ token }) => {
                         onChange={(e) => setMessage(e.target.value)}
                         rows="10"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Write your newsletter content here. You can use HTML tags for formatting."
                         required
                     ></textarea>
                 </div>
                 <button
                     type="submit"
-                    disabled={isSending}
+                    disabled={isSending || isUploading}
                     className="w-full bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-600 transition duration-200 disabled:bg-blue-300"
                 >
                     {isSending ? 'Sending...' : 'Send Newsletter'}

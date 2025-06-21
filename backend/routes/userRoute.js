@@ -12,7 +12,8 @@ import {
     deactivateAccount,
     subscribeToNewsletter,
     sendNewsletter,
-    getSubscribersCount
+    getSubscribersCount,
+    uploadNewsletterImage
 } from '../controllers/userController.js';
 import authUser from './../middleware/auth.js';
 import upload from '../middleware/multer.js';
@@ -34,6 +35,7 @@ userRouter.post('/deactivate', authUser, deactivateAccount);
 
 // Admin newsletter routes
 userRouter.post('/newsletter/send', adminAuth, sendNewsletter);
+userRouter.post('/upload/newsletter-image', upload.single('image'), adminAuth, uploadNewsletterImage);
 userRouter.get('/subscribers/count', adminAuth, getSubscribersCount);
 
 export default userRouter;

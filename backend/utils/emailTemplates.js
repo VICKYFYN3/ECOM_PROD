@@ -1,4 +1,4 @@
-export const getEmailTemplate = (subject, message, preheader = '') => {
+export const getEmailTemplate = (subject, message, preheader = '', imageUrl = '') => {
     return `
         <!DOCTYPE html>
         <html>
@@ -25,6 +25,13 @@ export const getEmailTemplate = (subject, message, preheader = '') => {
                     </a>
                     <h2 style="color: white; margin: 20px 0 0; font-size: 28px; font-weight: 600; letter-spacing: 0.5px;">${subject}</h2>
                 </div>
+
+                <!-- Newsletter Image (if provided) -->
+                ${imageUrl ? `
+                <div style="text-align: center; padding: 20px 0;">
+                    <img src="${imageUrl}" alt="Newsletter Image" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                </div>
+                ` : ''}
 
                 <!-- Content -->
                 <div style="padding: 30px 40px; color: #333;">

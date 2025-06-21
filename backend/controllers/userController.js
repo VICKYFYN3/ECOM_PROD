@@ -434,7 +434,7 @@ const subscribeToNewsletter = async (req, res) => {
 // send newsletter
 const sendNewsletter = async (req, res) => {
     try {
-        const { subject, message } = req.body;
+        const { subject, message, imageUrl } = req.body;
         if (!subject || !message) {
             return res.status(400).json({ success: false, message: 'Subject and message are required' });
         }
@@ -445,7 +445,7 @@ const sendNewsletter = async (req, res) => {
             return res.status(404).json({ success: false, message: 'No subscribed users found' });
         }
 
-        const newsletterHtml = getEmailTemplate(subject, message);
+        const newsletterHtml = getEmailTemplate(subject, message, '', imageUrl);
 
         for (const user of subscribedUsers) {
             try {
@@ -466,6 +466,34 @@ const sendNewsletter = async (req, res) => {
 
     } catch (error) {
         res.json({success:false, message: 'An error occurred while sending the newsletter'})
+    }
+};
+
+// upload newsletter image
+const uploadNewsletterImage = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'No image file provided' });
+        }
+
+        // Upload to Cloudinary
+        const result = await cloudinary.uploader.upload(req.file.path, {
+            resource_type: 'image',
+            folder: 'newsletter-images'
+        });
+
+        res.json({ 
+            success: true, 
+            imageUrl: result.secure_url,
+            message: 'Image uploaded successfully' 
+        });
+
+    } catch (error) {
+        console.error('Newsletter image upload error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'An error occurred while uploading the image' 
+        });
     }
 };
 
@@ -492,5 +520,6 @@ export {
     deactivateAccount,
     subscribeToNewsletter,
     sendNewsletter,
+    uploadNewsletterImage,
     getSubscribersCount
 };

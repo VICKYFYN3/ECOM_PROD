@@ -19,26 +19,24 @@ import UserProfile from './pages/UserProfile';
 
 const App = () => {
   return (
-    <div className='min-h-screen bg-gray-50'>
+    <div className='px-4 sm:px-[5vw] md:px-[7vw] lg:px-[4vw]'>
       <Toaster closeButton richColors position='top-right' />
       <Navbar />
       <SearchBar />
-      <main className='px-4 sm:px-6 lg:px-8'>
-        <Routes>
-          <Route path='/' element={<Home />} />
-          <Route path='/collection' element={<Collection />} />
-          <Route path='/product/:productId' element={<Product />} />
-          <Route path='/orders' element={<Orders />} />
-          <Route path='/cart' element={<Cart />} />
-          <Route path='/login' element={<Login />} />
-          <Route path='/place-order' element={<PlaceOrder />} />
-          <Route path='/about' element={<About />} />
-          <Route path='/contact' element={<Contact />} />
-          <Route path='/verify' element={<Verify />} />
-          <Route path="/verify-paystack" element={<VerifyPaystack />} />
-          <Route path="/profile" element={<UserProfile />} />
-        </Routes>
-      </main>
+      <Routes>
+        <Route path='/' element={<Home />} />
+        <Route path='/collection' element={<Collection />} />
+        <Route path='/product/:productId' element={<Product />} />
+        <Route path='/orders' element={<Orders />} />
+        <Route path='/cart' element={<Cart />} />
+        <Route path='/login' element={<Login />} />
+        <Route path='/place-order' element={<PlaceOrder />} />
+        <Route path='/about' element={<About />} />
+        <Route path='/contact' element={<Contact />} />
+        <Route path='/verify' element={<Verify />} />
+        <Route path="/verify-paystack" element={<VerifyPaystack />} />
+        <Route path="/profile" element={<UserProfile />} />
+      </Routes>
       <Footer />
     </div>
   ) 

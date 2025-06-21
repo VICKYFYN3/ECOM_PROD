@@ -5,6 +5,7 @@ import { ShopContext } from '../context/ShopContext'
 
 const Navbar = () => {
     const [visible, setVisible] = React.useState(false)
+    const [showMobileProfileDropdown, setShowMobileProfileDropdown] = React.useState(false)
     const location = useLocation();
 
     const { setShowSearch, getCartCount, token, setToken, setCartItems } = useContext(ShopContext);
@@ -16,6 +17,7 @@ const Navbar = () => {
     // Close mobile menu when location changes
     useEffect(() => {
         setVisible(false);
+        setShowMobileProfileDropdown(false);
     }, [location]);
 
     const logout = () => {
@@ -23,6 +25,17 @@ const Navbar = () => {
         localStorage.removeItem('token')
         setToken('')
         setCartItems({})
+        setVisible(false)
+        setShowMobileProfileDropdown(false)
+    }
+
+    const handleProfileClick = () => {
+        if (token) {
+            setShowMobileProfileDropdown(!showMobileProfileDropdown)
+        } else {
+            navigate('/login')
+            setVisible(false)
+        }
     }
 
     return (
@@ -150,11 +163,31 @@ const Navbar = () => {
                             
                             <div className="mt-8 pt-6 border-t border-gray-100">
                                 <div className="flex justify-around">
-                                    <div className="flex flex-col items-center gap-1 text-xs text-gray-500">
-                                        <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600" onClick={() => token ? null : navigate('/login')}>
+                                    <div className="flex flex-col items-center gap-1 text-xs text-gray-500 relative">
+                                        <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 cursor-pointer" onClick={handleProfileClick}>
                                             <img src={assets.profile_icon} className="w-5" alt="" />
                                         </div>
                                         <span>Profile</span>
+                                        
+                                        {/* Mobile Profile Dropdown */}
+                                        {token && showMobileProfileDropdown && (
+                                            <div className="absolute top-12 left-1/2 transform -translate-x-1/2 w-40 py-2 bg-white rounded-lg shadow-xl border border-gray-100 z-50">
+                                                <div className="h-1 w-full bg-gradient-to-r from-purple-500 to-pink-500 mb-2"></div>
+                                                <div className='flex flex-col'>
+                                                    <p onClick={() => {
+                                                        navigate('/profile')
+                                                        setVisible(false)
+                                                        setShowMobileProfileDropdown(false)
+                                                    }} className='cursor-pointer hover:bg-purple-50 py-2 px-4 text-gray-700 hover:text-purple-700 transition-colors'>My Profile</p>
+                                                    <p onClick={() => {
+                                                        navigate('/orders')
+                                                        setVisible(false)
+                                                        setShowMobileProfileDropdown(false)
+                                                    }} className='cursor-pointer hover:bg-purple-50 py-2 px-4 text-gray-700 hover:text-purple-700 transition-colors'>Orders</p>
+                                                    <p onClick={logout} className='cursor-pointer hover:bg-purple-50 py-2 px-4 text-gray-700 hover:text-purple-700 transition-colors'>Logout</p>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                     
                                     {/* Search icon in mobile menu - only show on collection page */}

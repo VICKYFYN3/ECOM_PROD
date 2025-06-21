@@ -7,6 +7,7 @@ const Orders = () => {
   const { backendURL, token, currency } = useContext(ShopContext);
   const [orderData, setOrderData] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('ongoing'); // 'ongoing' or 'completed'
 
   const loadOrderData = async () => {
     try {
@@ -40,6 +41,30 @@ const Orders = () => {
     loadOrderData()
   }, [token])
 
+  // Filter orders based on active tab
+  const getFilteredOrders = () => {
+    if (activeTab === 'ongoing') {
+      return orderData.filter(item => 
+        item.status !== 'delivered' && 
+        item.status !== 'cancelled' && 
+        item.status !== 'returned'
+      );
+    } else {
+      return orderData.filter(item => 
+        item.status === 'delivered' || 
+        item.status === 'cancelled' || 
+        item.status === 'returned'
+      );
+    }
+  };
+
+  const filteredOrders = getFilteredOrders();
+
+  // Check if order status allows tracking
+  const canTrackOrder = (status) => {
+    return status !== 'delivered' && status !== 'cancelled' && status !== 'returned';
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -51,23 +76,54 @@ const Orders = () => {
 
   return (
     <div className='border-t pt-16'>
-      <div className='text-2xl'>
+      <div className='text-2xl mb-8'>
         <Title text1={'MY'} text2={'ORDERS'} />
       </div>
       
-      {orderData.length === 0 ? (
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200 mb-6">
+        <button
+          onClick={() => setActiveTab('ongoing')}
+          className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'ongoing'
+              ? 'border-purple-500 text-purple-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          Ongoing Orders
+        </button>
+        <button
+          onClick={() => setActiveTab('completed')}
+          className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'completed'
+              ? 'border-purple-500 text-purple-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          Completed Orders
+        </button>
+      </div>
+      
+      {filteredOrders.length === 0 ? (
         <div className="text-center py-12">
           <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
             <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
             </svg>
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No orders yet</h3>
-          <p className="text-gray-500">Start shopping to see your orders here.</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            {activeTab === 'ongoing' ? 'No ongoing orders' : 'No completed orders'}
+          </h3>
+          <p className="text-gray-500">
+            {activeTab === 'ongoing' 
+              ? 'You don\'t have any orders in progress.' 
+              : 'You don\'t have any completed orders yet.'
+            }
+          </p>
         </div>
       ) : (
         <div>
-          {orderData.map((item, index) => (
+          {filteredOrders.map((item, index) => (
             <div key={index} className='py-4 border-t border-b text-gray-700 flex flex-col md:flex-row md:items-center md:justify-between gap-4'>
               <div className='flex items-start gap-6 text-sm'>
                 <img className='w-16 sm:w-20' src={item.image[0]} alt="" />
@@ -84,10 +140,23 @@ const Orders = () => {
               </div>
               <div className='md:w-1/2 flex justify-between'>
                 <div className='flex items-center gap-2'>
-                  <p className='min-w-2 h-2 rounded-full bg-green-500'></p>
-                  <p className='text-sm md:text-base'>{item.status}</p>
+                  <p className={`min-w-2 h-2 rounded-full ${
+                    item.status === 'delivered' ? 'bg-green-500' :
+                    item.status === 'cancelled' ? 'bg-red-500' :
+                    item.status === 'returned' ? 'bg-orange-500' :
+                    'bg-blue-500'
+                  }`}></p>
+                  <p className='text-sm md:text-base capitalize'>{item.status}</p>
                 </div>
-                <button type="button" onClick={loadOrderData} className='cursor-pointer border px-4 py-2 text-sm font-medium rounded-sm'>Track Order</button>
+                {canTrackOrder(item.status) && (
+                  <button 
+                    type="button" 
+                    onClick={loadOrderData} 
+                    className='cursor-pointer border px-4 py-2 text-sm font-medium rounded-sm hover:bg-gray-50 transition-colors'
+                  >
+                    Track Order
+                  </button>
+                )}
               </div>
             </div>
           ))}

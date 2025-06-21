@@ -7,6 +7,29 @@ const List = ({ token }) => {
     const [list, setList] = useState([])
     const [loading, setLoading] = useState(false)
     const [editingStock, setEditingStock] = useState({}) // Track which stock input is being edited
+    const [editingProduct, setEditingProduct] = useState(null) // Track which product is being edited
+    const [editModalOpen, setEditModalOpen] = useState(false)
+    const [editLoading, setEditLoading] = useState(false)
+
+    // Edit form state
+    const [editForm, setEditForm] = useState({
+        name: '',
+        description: '',
+        price: '',
+        category: 'Men',
+        subCategory: 'Topwear',
+        bestseller: false,
+        sizes: [],
+        sizeStocks: {}
+    })
+
+    // Image states for editing
+    const [editImages, setEditImages] = useState({
+        image1: null,
+        image2: null,
+        image3: null,
+        image4: null
+    })
 
     const fetchList = async () => {
         setLoading(true)
@@ -22,6 +45,130 @@ const List = ({ token }) => {
         } finally {
             setLoading(false)
         }
+    }
+
+    // Open edit modal and populate form
+    const openEditModal = (product) => {
+        setEditingProduct(product)
+        setEditForm({
+            name: product.name,
+            description: product.description,
+            price: product.price.toString(),
+            category: product.category,
+            subCategory: product.subCategory,
+            bestseller: product.bestseller || false,
+            sizes: product.sizes || [],
+            sizeStocks: product.sizeStock || {}
+        })
+        setEditImages({
+            image1: null,
+            image2: null,
+            image3: null,
+            image4: null
+        })
+        setEditModalOpen(true)
+    }
+
+    // Close edit modal
+    const closeEditModal = () => {
+        setEditModalOpen(false)
+        setEditingProduct(null)
+        setEditForm({
+            name: '',
+            description: '',
+            price: '',
+            category: 'Men',
+            subCategory: 'Topwear',
+            bestseller: false,
+            sizes: [],
+            sizeStocks: {}
+        })
+        setEditImages({
+            image1: null,
+            image2: null,
+            image3: null,
+            image4: null
+        })
+    }
+
+    // Handle edit form submission
+    const handleEditSubmit = async (e) => {
+        e.preventDefault()
+        if (!editingProduct) return
+
+        setEditLoading(true)
+        try {
+            const formData = new FormData()
+
+            formData.append("name", editForm.name)
+            formData.append("description", editForm.description)
+            formData.append("price", editForm.price)
+            formData.append("category", editForm.category)
+            formData.append("subCategory", editForm.subCategory)
+            formData.append("bestseller", editForm.bestseller)
+            formData.append("sizes", JSON.stringify(editForm.sizes))
+            formData.append("sizeStocks", JSON.stringify(editForm.sizeStocks))
+
+            // Only append new images if they exist
+            editImages.image1 && formData.append("image1", editImages.image1)
+            editImages.image2 && formData.append("image2", editImages.image2)
+            editImages.image3 && formData.append("image3", editImages.image3)
+            editImages.image4 && formData.append("image4", editImages.image4)
+
+            const response = await axios.post(
+                backendURL + "/api/product/update",
+                formData,
+                { 
+                    headers: { 
+                        token,
+                        'Content-Type': 'multipart/form-data'
+                    },
+                    params: { productId: editingProduct._id }
+                }
+            )
+
+            if (response.data.success) {
+                toast.success('Product updated successfully')
+                closeEditModal()
+                await fetchList()
+            } else {
+                toast.error(response.data.message)
+            }
+        } catch (error) {
+            toast.error(error.message)
+        } finally {
+            setEditLoading(false)
+        }
+    }
+
+    // Handle size selection in edit form
+    const handleEditSizeToggle = (size) => {
+        setEditForm(prev => {
+            const newSizes = prev.sizes.includes(size) 
+                ? prev.sizes.filter(item => item !== size) 
+                : [...prev.sizes, size]
+            
+            const newSizeStocks = { ...prev.sizeStocks }
+            if (newSizes.includes(size) && !prev.sizeStocks[size]) {
+                newSizeStocks[size] = 0
+            } else if (!newSizes.includes(size)) {
+                delete newSizeStocks[size]
+            }
+            
+            return {
+                ...prev,
+                sizes: newSizes,
+                sizeStocks: newSizeStocks
+            }
+        })
+    }
+
+    // Handle image file selection for editing
+    const handleEditImageChange = (imageKey, file) => {
+        setEditImages(prev => ({
+            ...prev,
+            [imageKey]: file
+        }))
     }
 
     // Only allow size-specific stock updates
@@ -261,12 +408,20 @@ const List = ({ token }) => {
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-center">
-                                        <button
-                                            onClick={() => removeProduct(item._id)}
-                                            className="cursor-pointer inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-150"
-                                        >
-                                            Delete
-                                        </button>
+                                        <div className="flex items-center justify-center space-x-2">
+                                            <button
+                                                onClick={() => openEditModal(item)}
+                                                className="cursor-pointer inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-150"
+                                            >
+                                                Edit
+                                            </button>
+                                            <button
+                                                onClick={() => removeProduct(item._id)}
+                                                className="cursor-pointer inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-150"
+                                            >
+                                                Delete
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -280,7 +435,7 @@ const List = ({ token }) => {
                 <div className="divide-y divide-gray-100">
                     {list.map((item, index) => (
                         <div key={index} className="p-3 bg-white">
-                            {/* Top Row: Image, Name, Delete Button */}
+                            {/* Top Row: Image, Name, Action Buttons */}
                             <div className="flex items-start space-x-3 mb-2">
                                 <img
                                     className="h-16 w-16 rounded-lg object-cover border border-gray-200 flex-shrink-0"
@@ -300,12 +455,20 @@ const List = ({ token }) => {
                                         </span>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => removeProduct(item._id)}
-                                    className="px-2 py-1 text-xs font-medium rounded text-white bg-red-500 hover:bg-red-600 transition-colors flex-shrink-0"
-                                >
-                                    Delete
-                                </button>
+                                <div className="flex flex-col space-y-1 flex-shrink-0">
+                                    <button
+                                        onClick={() => openEditModal(item)}
+                                        className="px-2 py-1 text-xs font-medium rounded text-white bg-blue-500 hover:bg-blue-600 transition-colors"
+                                    >
+                                        Edit
+                                    </button>
+                                    <button
+                                        onClick={() => removeProduct(item._id)}
+                                        className="px-2 py-1 text-xs font-medium rounded text-white bg-red-500 hover:bg-red-600 transition-colors"
+                                    >
+                                        Delete
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Stock Section */}
@@ -380,6 +543,251 @@ const List = ({ token }) => {
                     </div>
                     <h3 className="text-lg font-medium text-gray-900 mb-2">No products found</h3>
                     <p className="text-gray-500">Get started by adding your first product.</p>
+                </div>
+            )}
+
+            {/* Edit Product Modal */}
+            {editModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                        {/* Modal Header */}
+                        <div className="px-6 py-4 border-b border-gray-200">
+                            <div className="flex justify-between items-center">
+                                <h3 className="text-lg font-semibold text-gray-900">Edit Product</h3>
+                                <button
+                                    onClick={closeEditModal}
+                                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                                >
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Modal Body */}
+                        <form onSubmit={handleEditSubmit} className="px-6 py-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Basic Information */}
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Product Name *
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={editForm.name}
+                                            onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Description *
+                                        </label>
+                                        <textarea
+                                            value={editForm.description}
+                                            onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                                            rows="4"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Price *
+                                        </label>
+                                        <input
+                                            type="number"
+                                            value={editForm.price}
+                                            onChange={(e) => setEditForm(prev => ({ ...prev, price: e.target.value }))}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Category *
+                                            </label>
+                                            <select
+                                                value={editForm.category}
+                                                onChange={(e) => setEditForm(prev => ({ ...prev, category: e.target.value }))}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                required
+                                            >
+                                                <option value="Men">Men</option>
+                                                <option value="Women">Women</option>
+                                                <option value="Kids">Kids</option>
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Sub Category *
+                                            </label>
+                                            <select
+                                                value={editForm.subCategory}
+                                                onChange={(e) => setEditForm(prev => ({ ...prev, subCategory: e.target.value }))}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                required
+                                            >
+                                                <option value="Topwear">Topwear</option>
+                                                <option value="Bottomwear">Bottomwear</option>
+                                                <option value="Footwear">Footwear</option>
+                                                <option value="Accessories">Accessories</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center">
+                                        <input
+                                            type="checkbox"
+                                            id="bestseller"
+                                            checked={editForm.bestseller}
+                                            onChange={(e) => setEditForm(prev => ({ ...prev, bestseller: e.target.checked }))}
+                                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                        />
+                                        <label htmlFor="bestseller" className="ml-2 block text-sm text-gray-900">
+                                            Mark as Bestseller
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {/* Images and Sizes */}
+                                <div className="space-y-4">
+                                    {/* Current Images */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Current Images
+                                        </label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {editingProduct?.image?.map((img, index) => (
+                                                <div key={index} className="relative">
+                                                    <img
+                                                        src={img}
+                                                        alt={`Product ${index + 1}`}
+                                                        className="w-full h-20 object-cover rounded-lg border border-gray-200"
+                                                    />
+                                                    <span className="absolute top-1 left-1 bg-black bg-opacity-50 text-white text-xs px-1 rounded">
+                                                        Image {index + 1}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* New Images */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Replace Images (Optional)
+                                        </label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {[1, 2, 3, 4].map((num) => (
+                                                <div key={num} className="relative">
+                                                    <input
+                                                        type="file"
+                                                        accept="image/*"
+                                                        onChange={(e) => handleEditImageChange(`image${num}`, e.target.files[0])}
+                                                        className="hidden"
+                                                        id={`editImage${num}`}
+                                                    />
+                                                    <label
+                                                        htmlFor={`editImage${num}`}
+                                                        className="block w-full h-20 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 transition-colors flex items-center justify-center"
+                                                    >
+                                                        {editImages[`image${num}`] ? (
+                                                            <img
+                                                                src={URL.createObjectURL(editImages[`image${num}`])}
+                                                                alt={`New ${num}`}
+                                                                className="w-full h-full object-cover rounded-lg"
+                                                            />
+                                                        ) : (
+                                                            <span className="text-xs text-gray-500">Image {num}</span>
+                                                        )}
+                                                    </label>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Sizes */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Available Sizes
+                                        </label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map((size) => (
+                                                <button
+                                                    key={size}
+                                                    type="button"
+                                                    onClick={() => handleEditSizeToggle(size)}
+                                                    className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                                                        editForm.sizes.includes(size)
+                                                            ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                                            : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
+                                                    }`}
+                                                >
+                                                    {size}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Size Stocks */}
+                                    {editForm.sizes.length > 0 && (
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Stock by Size
+                                            </label>
+                                            <div className="space-y-2">
+                                                {editForm.sizes.map((size) => (
+                                                    <div key={size} className="flex items-center justify-between">
+                                                        <span className="text-sm font-medium text-gray-600">{size}:</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            value={editForm.sizeStocks[size] || 0}
+                                                            onChange={(e) => setEditForm(prev => ({
+                                                                ...prev,
+                                                                sizeStocks: {
+                                                                    ...prev.sizeStocks,
+                                                                    [size]: parseInt(e.target.value) || 0
+                                                                }
+                                                            }))}
+                                                            className="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-center"
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-200">
+                                <button
+                                    type="button"
+                                    onClick={closeEditModal}
+                                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={editLoading}
+                                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
+                                >
+                                    {editLoading ? 'Updating...' : 'Update Product'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             )}
         </div>

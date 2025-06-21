@@ -196,5 +196,92 @@ const updateStock = async (req, res) => {
     }
 }
 
+const updateProduct = async (req, res) => {
+    try {
+        const { productId } = req.query;
+        const { name, description, price, category, subCategory, sizes, bestseller, sizeStocks } = req.body;
+        
+        // Check if product exists
+        const existingProduct = await productModel.findById(productId);
+        if (!existingProduct) {
+            return res.json({ success: false, message: "Product not found" });
+        }
 
-export { addProduct, listProducts, removeProduct, singleProduct, updateStock};
+        // Handle new images if uploaded
+        let newImages = [];
+        if (req.files) {
+            const imageFiles = [
+                req.files.image1 && req.files.image1[0],
+                req.files.image2 && req.files.image2[0],
+                req.files.image3 && req.files.image3[0],
+                req.files.image4 && req.files.image4[0]
+            ].filter(item => item !== undefined);
+
+            if (imageFiles.length > 0) {
+                newImages = await Promise.all(
+                    imageFiles.map(async (item) => {
+                        let result = await cloudinary.uploader.upload(item.path, { resource_type: 'image' });
+                        return result.secure_url;
+                    })
+                );
+            }
+        }
+
+        // Parse sizes and sizeStocks
+        const parsedSizes = JSON.parse(sizes);
+        const parsedSizeStocks = JSON.parse(sizeStocks);
+
+        // Calculate total stock from size stocks
+        let totalStockQuantity = 0;
+        const sizeStock = {};
+        parsedSizes.forEach(size => {
+            const stockForSize = parseInt(parsedSizeStocks[size]) || 0;
+            sizeStock[size] = stockForSize;
+            totalStockQuantity += stockForSize;
+        });
+
+        // Prepare update data
+        const updateData = {
+            name,
+            description,
+            price: Number(price),
+            category,
+            subCategory,
+            sizes: parsedSizes,
+            bestseller: bestseller === "true" ? true : false,
+            stockQuantity: totalStockQuantity,
+            sizeStock
+        };
+
+        // Only update images if new ones were uploaded
+        if (newImages.length > 0) {
+            updateData.image = newImages;
+        }
+
+        // Update the product
+        const updatedProduct = await productModel.findByIdAndUpdate(
+            productId,
+            updateData,
+            { new: true }
+        );
+
+        // Format response
+        const formattedProduct = {
+            ...updatedProduct.toObject(),
+            sizeStock: updatedProduct.sizeStock instanceof Map 
+                ? Object.fromEntries(updatedProduct.sizeStock) 
+                : updatedProduct.sizeStock || {}
+        };
+
+        res.json({ 
+            success: true, 
+            message: "Product updated successfully",
+            product: formattedProduct
+        });
+    } catch (error) {
+        console.error('Update product error:', error);
+        res.json({success: false, message: error.message});
+    }
+}
+
+export { addProduct, listProducts, removeProduct, singleProduct, updateStock, updateProduct};

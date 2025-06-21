@@ -32,9 +32,7 @@ const Reviews = () => {
             });
             setReviews(response.data.reviews || []);
         } catch (error) {
-            console.log(error);
-            toast.error('Failed to fetch reviews');
-            setReviews([]);
+            toast.error('Failed to load reviews');
         }
     };
 
@@ -43,12 +41,9 @@ const Reviews = () => {
             const response = await axios.post(backendURL + '/api/review/reviewable-products', {}, {
                 headers: { token }
             });
-            console.log('Reviewable products response:', response.data);
             setReviewableProducts(response.data.products || []);
         } catch (error) {
-            console.log(error);
-            toast.error('Failed to fetch reviewable products');
-            setReviewableProducts([]);
+            toast.error('Failed to load reviewable products');
         }
     };
 
@@ -70,27 +65,20 @@ const Reviews = () => {
                 headers: { token }
             });
 
-            console.log('Add review response:', response.data);
-
             if (response.data.success) {
-                // First update the reviews list
-                await fetchReviews();
-                // Then update reviewable products (should now exclude the just-reviewed product)
-                await fetchReviewableProducts();
-
-                // Reset form state
+                toast.success('Review submitted successfully!');
                 setShowReviewForm(false);
                 setSelectedProduct(null);
                 setRating(5);
                 setHoveredRating(0);
                 setError('');
-                toast.success('Rating submitted successfully');
+                await fetchReviews();
+                await fetchReviewableProducts();
             } else {
-                setError(response.data.message || 'Failed to submit rating');
+                toast.error(response.data.message || 'Failed to submit review');
             }
         } catch (error) {
-            console.error('Error adding review:', error);
-            setError(error.response?.data?.message || 'Failed to submit rating');
+            toast.error(error.response?.data?.message || 'Failed to submit review');
         } finally {
             setLoading(false);
         }
@@ -151,12 +139,9 @@ const Reviews = () => {
         }
     };
 
-    const handleRateProduct = (product) => {
-        console.log('Selected product for rating:', product);
+    const handleProductSelect = (product) => {
         setSelectedProduct(product);
         setShowReviewForm(true);
-        setRating(5);
-        setHoveredRating(0);
     };
 
     return (
@@ -188,7 +173,7 @@ const Reviews = () => {
                                         Purchased on {new Date(product.createdAt).toLocaleDateString()}
                                     </p>
                                     <button
-                                        onClick={() => handleRateProduct(product)}
+                                        onClick={() => handleProductSelect(product)}
                                         className="w-full px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium transition-colors"
                                     >
                                         Rate This Product

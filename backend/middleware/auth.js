@@ -10,11 +10,16 @@ const authUser = async (req, res, next) => {
     }
     try {
         const token_decode = jwt.verify(token, process.env.JWT_SECRET)
+        
+        // Ensure req.body exists (for GET requests that don't have a body)
+        if (!req.body) {
+            req.body = {};
+        }
+        
         req.body.userId = token_decode.id
         next()
     } catch (error) {
-        console.log(error);
-        res.json({success:false , message: error.message})
+        res.status(401).json({success:false , message: 'Invalid token'})
         
     }
 

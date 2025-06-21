@@ -4,6 +4,7 @@ import Title from '../../components/Title';
 import { ShopContext } from '../../context/ShopContext';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { getAllStates, getCitiesForState } from '../../data/nigerianStates';
 
 const Addresses = () => {
     const { backendURL, token } = useContext(ShopContext);
@@ -18,13 +19,16 @@ const Addresses = () => {
         city: '',
         state: '',
         postalCode: '',
-        country: '',
+        country: 'Nigeria',
         email: '',
         isDefault: false,
         addressType: 'shipping'
     });
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [availableCities, setAvailableCities] = useState([]);
+
+    const nigerianStates = getAllStates();
 
     const loadAddresses = async () => {
         try {
@@ -34,7 +38,6 @@ const Addresses = () => {
                 setAddresses(response.data.addresses);
             }
         } catch (error) {
-            console.error(error);
             toast.error('Failed to load addresses');
         } finally {
             setLoading(false);
@@ -51,7 +54,6 @@ const Addresses = () => {
             }
             throw new Error(response.data.message || 'Failed to add address');
         } catch (error) {
-            console.error(error);
             toast.error(error.message || 'Failed to add address');
             return { success: false, message: error.message };
         }
@@ -71,7 +73,6 @@ const Addresses = () => {
             }
             throw new Error(response.data.message || 'Failed to update address');
         } catch (error) {
-            console.error(error);
             toast.error(error.message || 'Failed to update address');
             return { success: false, message: error.message };
         }
@@ -91,7 +92,6 @@ const Addresses = () => {
             }
             throw new Error(response.data.message || 'Failed to delete address');
         } catch (error) {
-            console.error(error);
             toast.error(error.message || 'Failed to delete address');
             return { success: false, message: error.message };
         }
@@ -111,7 +111,6 @@ const Addresses = () => {
             }
             throw new Error(response.data.message || 'Failed to set default address');
         } catch (error) {
-            console.error(error);
             toast.error(error.message || 'Failed to set default address');
             return { success: false, message: error.message };
         }
@@ -125,10 +124,22 @@ const Addresses = () => {
 
     const handleInputChange = (e) => {
         const { name, value, type, checked } = e.target;
-        setAddressForm({
-            ...addressForm,
-            [name]: type === 'checkbox' ? checked : value
-        });
+        
+        if (name === 'state') {
+            // When state changes, update cities and clear city selection
+            const cities = getCitiesForState(value);
+            setAvailableCities(cities);
+            setAddressForm({
+                ...addressForm,
+                state: value,
+                city: '' // Clear city when state changes
+            });
+        } else {
+            setAddressForm({
+                ...addressForm,
+                [name]: type === 'checkbox' ? checked : value
+            });
+        }
     };
 
     const validateAddressForm = () => {
@@ -157,11 +168,12 @@ const Addresses = () => {
             city: '',
             state: '',
             postalCode: '',
-            country: '',
+            country: 'Nigeria',
             email: '',
             isDefault: false,
             addressType: 'shipping'
         });
+        setAvailableCities([]);
     };
 
     const handleAddSubmit = async (e) => {
@@ -196,6 +208,8 @@ const Addresses = () => {
         if (!address) return;
 
         setEditingAddress(address._id);
+        const cities = getCitiesForState(address.state || '');
+        setAvailableCities(cities);
         setAddressForm({
             fullName: address.fullName || '',
             phoneNumber: address.phoneNumber || '',
@@ -204,7 +218,7 @@ const Addresses = () => {
             city: address.city || '',
             state: address.state || '',
             postalCode: address.postalCode || '',
-            country: address.country || '',
+            country: address.country || 'Nigeria',
             email: address.email || '',
             isDefault: Boolean(address.isDefault),
             addressType: address.addressType || 'shipping'
@@ -274,26 +288,35 @@ const Addresses = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">City*</label>
-                        <input
-                            type="text"
-                            name="city"
-                            value={addressForm.city}
-                            onChange={handleInputChange}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            required
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">State/Province*</label>
-                        <input
-                            type="text"
+                        <label className="block text-sm font-medium text-gray-700 mb-1">State*</label>
+                        <select
                             name="state"
                             value={addressForm.state}
                             onChange={handleInputChange}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             required
-                        />
+                        >
+                            <option value="">Select State</option>
+                            {nigerianStates.map(state => (
+                                <option key={state} value={state}>{state}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">City*</label>
+                        <select
+                            name="city"
+                            value={addressForm.city}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            required
+                            disabled={!addressForm.state}
+                        >
+                            <option value="">Select City</option>
+                            {availableCities.map(city => (
+                                <option key={city} value={city}>{city}</option>
+                            ))}
+                        </select>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Postal Code*</label>
@@ -317,6 +340,7 @@ const Addresses = () => {
                         onChange={handleInputChange}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         required
+                        readOnly
                     />
                 </div>
                 <div className="mb-4">

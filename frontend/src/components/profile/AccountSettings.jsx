@@ -45,7 +45,6 @@ const AccountSettings = () => {
                         <h4 className="text-sm font-medium text-gray-700 mb-2">Deactivate Account</h4>
                         <p className="text-sm text-gray-500 mb-3">
                             Deactivating your account will remove your profile and personal information from our system.
-                            You can reactivate your account by logging in again.
                         </p>
                         <button
                             onClick={() => setShowDeactivateConfirm(true)}

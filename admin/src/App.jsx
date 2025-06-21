@@ -7,6 +7,8 @@ import List from './pages/List';
 import Orders from './pages/Orders';
 import Login from './components/Login';
 import { Toaster } from 'sonner';
+import Compose from './pages/Compose';
+import ContactMessages from './pages/ContactMessages';
 
 export const backendURL = import.meta.env.VITE_BACKEND_URL
 export const currency = '₦'
@@ -32,6 +34,8 @@ const App = () => {
                 <Route path='/add' element={<Add token={token} />} />
                 <Route path='/list' element={<List token={token} />} />
                 <Route path='/orders' element={<Orders token={token} />} />
+                <Route path='/compose' element={<Compose token={token} />} />
+                <Route path='/contact-messages' element={<ContactMessages token={token} />} />
               </Routes>
             </div>
           </div>

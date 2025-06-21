@@ -9,6 +9,7 @@ import cartRouter from './routes/cartRoute.js';
 import orderRouter from './routes/orderRoute.js';
 import reviewRouter from './routes/reviewRoute.js';
 import addressRouter from './routes/addressRoute.js';
+import contactRouter from './routes/contactRoute.js';
 
 // App Configuration
 const app = express();
@@ -26,7 +27,12 @@ app.use('/api/cart',cartRouter);
 app.use('/api/order',orderRouter)
 app.use('/api/review',reviewRouter)
 app.use('/api/address',addressRouter)
+app.use('/api/contact',contactRouter)
 
+// Test endpoint to verify contact routes are loaded
+app.get('/api/contact/test', (req, res) => {
+    res.json({ success: true, message: 'Contact routes are working!' });
+});
 
 app.get('/',(req,res)=>{
     res.send("API is running");

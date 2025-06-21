@@ -3,6 +3,8 @@ import userModel from '../models/userModel.js';
 import productModel from '../models/productModel.js'; // Add this import
 import Stripe from 'stripe';
 import Paystack from "paystack";
+import { getOrderConfirmationEmail, getOrderStatusUpdateEmail } from "../utils/emailTemplates.js";
+import transporter from "../config/nodemailer.js";
 
 //global variables
 const currency = 'ngn'
@@ -159,10 +161,19 @@ const placeOrder = async (req, res) => {
 
         await userModel.findByIdAndUpdate(userId, { cartData: {} });
 
+        // Send order confirmation email
+        const emailHtml = getOrderConfirmationEmail(newOrder);
+        const subject = `Your Order is Confirmed!`;
+        await transporter.sendMail({
+            from: `"Forever" <${process.env.EMAIL_USER}>`,
+            to: address.email,
+            subject: subject,
+            html: emailHtml
+        });
+
         res.json({ success: true, message: "Order Placed" });
 
     } catch (error) {
-        console.log(error);
         res.json({ success: false, message: error.message });
     }
 };
@@ -222,7 +233,6 @@ const placeOrderStripe = async (req, res) => {
 
         res.json({ success: true, session_url: session.url });
     } catch (error) {
-        console.log(error);
         res.json({ success: false, message: error.message });
     }
 };
@@ -234,6 +244,16 @@ const verifyStripe = async (req, res) => {
     try {
         if (success === "true") {
             await orderModel.findByIdAndUpdate(orderId, { payment: true });
+            const order = await orderModel.findById(orderId);
+            // Send order confirmation email
+            const emailHtml = getOrderConfirmationEmail(order);
+            const subject = `Your Order is Confirmed!`;
+            await transporter.sendMail({
+                from: `"Forever" <${process.env.EMAIL_USER}>`,
+                to: order.address.email,
+                subject: subject,
+                html: emailHtml
+            });
             await userModel.findByIdAndUpdate(userId, { cartData: {} });
             res.json({ success: true });
         } else {
@@ -246,7 +266,6 @@ const verifyStripe = async (req, res) => {
             res.json({ success: false });
         }
     } catch (error) {
-        console.log(error);
         res.json({ success: false, message: error.message });
     }
 };
@@ -294,7 +313,6 @@ const placeOrderPaystack = async (req, res) => {
         });
 
     } catch (error) {
-        console.log(error);
         res.json({ success: false, message: error.message });
     }
 };
@@ -304,14 +322,21 @@ const verifyPaystack = async (req, res) => {
     const { orderId, reference } = req.body;
 
     try {
-        const transaction = await paystack.transaction.verify(reference);
+        const response = await paystack.transaction.verify(reference);
         
-        if (transaction.data.status === 'success') {
+        if (response.status) {
             await orderModel.findByIdAndUpdate(orderId, { payment: true });
             const order = await orderModel.findById(orderId);
-            if (order) {
-                await userModel.findByIdAndUpdate(order.userId, { cartData: {} });
-            }
+            // Send order confirmation email
+            const emailHtml = getOrderConfirmationEmail(order);
+            const subject = `Your Order is Confirmed!`;
+            await transporter.sendMail({
+                from: `"Forever" <${process.env.EMAIL_USER}>`,
+                to: order.address.email,
+                subject: subject,
+                html: emailHtml
+            });
+            await userModel.findByIdAndUpdate(order.userId, { cartData: {} });
             res.json({ success: true });
         } else {
             // If payment failed, restore stock and delete order
@@ -323,7 +348,6 @@ const verifyPaystack = async (req, res) => {
             res.json({ success: false });
         }
     } catch (error) {
-        console.log(error);
         res.json({ success: false, message: error.message });
     }
 };
@@ -334,7 +358,6 @@ const allOrders = async (req, res) => {
         const orders = await orderModel.find({});
         res.json({ success: true, orders });
     } catch (error) {
-        console.log(error);
         res.json({ success: false, message: error.message });
     }
 };
@@ -347,7 +370,6 @@ const userOrders = async (req, res) => {
         const orders = await orderModel.find({ userId });
         res.json({ success: true, orders });
     } catch (error) {
-        console.log(error);
         res.json({ success: false, message: error.message });
     }
 };
@@ -357,12 +379,43 @@ const updateStatus = async (req, res) => {
     try {
         const { orderId, status } = req.body;
         await orderModel.findByIdAndUpdate(orderId, { status });
-        res.json({ success: true, message: "Order status updated successfully" });
+
+        // Send status update email
+        const order = await orderModel.findById(orderId);
+        if (order) {
+            const emailHtml = getOrderStatusUpdateEmail(order);
+            if (emailHtml) {
+                const mailOptions = {
+                    from: `"Forever" <${process.env.EMAIL_USER}>`,
+                    to: order.address.email,
+                    subject: `Your Order Status: ${status}`,
+                    html: emailHtml
+                };
+                
+                // This is a workaround, the subject should be part of the emailHtml
+                if (emailHtml.includes("<title>")) {
+                    mailOptions.subject = emailHtml.split('<title>')[1].split('</title>')[0];
+                }
+
+                await transporter.sendMail(mailOptions);
+            }
+        }
+
+        res.json({ success: true, message: "Status Updated" });
     } catch (error) {
-        console.log(error);
-        res.json({ success: false, message: error.message });
+        res.json({ success: false, message: "Error" });
     }
 };
+
+const updatePaymentStatus = async (req, res) => {
+    try {
+        const { orderId, payment } = req.body;
+        await orderModel.findByIdAndUpdate(orderId, { payment });
+        res.json({ success: true, message: "Payment status updated successfully" });
+    } catch (error) {
+        res.json({ success: false, message: "Error updating payment status" });
+    }
+}
 
 export { 
     verifyStripe, 
@@ -372,5 +425,6 @@ export {
     allOrders, 
     userOrders, 
     updateStatus, 
-    verifyPaystack 
+    verifyPaystack,
+    updatePaymentStatus
 };

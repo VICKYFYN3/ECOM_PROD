@@ -6,6 +6,7 @@ import { ShopContext } from '../context/ShopContext';
 import { assets } from '../assets/assets';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { getAllStates, getCitiesForState } from '../data/nigerianStates';
 
 const PlaceOrder = () => {
   const { products, currency, cartItems, backendURL, token, setCartItems, getCartTotal, delivery_fee } = useContext(ShopContext);
@@ -16,7 +17,11 @@ const PlaceOrder = () => {
   const [addressTab, setAddressTab] = useState('saved');
   const [loading, setLoading] = useState(false);
   const [orderItems, setOrderItems] = useState([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [availableCities, setAvailableCities] = useState([]);
   const navigate = useNavigate();
+
+  const nigerianStates = getAllStates();
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -27,7 +32,7 @@ const PlaceOrder = () => {
     city: '',
     state: '',
     postalCode: '',
-    country: '',
+    country: 'Nigeria',
     isDefault: false,
     addressType: 'shipping'
   });
@@ -46,7 +51,6 @@ const PlaceOrder = () => {
         }
       }
     } catch (error) {
-      console.error(error);
       toast.error('Failed to load addresses');
     } finally {
       setLoading(false);
@@ -69,7 +73,6 @@ const PlaceOrder = () => {
       }
       throw new Error(response.data.message || 'Failed to add address');
     } catch (error) {
-      console.error(error);
       toast.error(error.message || 'Failed to add address');
       return false;
     }
@@ -77,10 +80,22 @@ const PlaceOrder = () => {
 
   const onChangeHandler = (event) => {
     const { name, value, type, checked } = event.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
+    
+    if (name === 'state') {
+      // When state changes, update cities and clear city selection
+      const cities = getCitiesForState(value);
+      setAvailableCities(cities);
+      setFormData(prev => ({
+        ...prev,
+        state: value,
+        city: '' // Clear city when state changes
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: type === 'checkbox' ? checked : value
+      }));
+    }
   };
 
   const validateAddressForm = () => {
@@ -107,6 +122,7 @@ const PlaceOrder = () => {
       return;
     }
 
+    setIsProcessing(true);
     try {
       let orderItemsData = [];
       for (const items in cartItems) {
@@ -199,8 +215,9 @@ const PlaceOrder = () => {
           break;
       }
     } catch (error) {
-      console.log(error);
-      toast.error(error.message);
+      toast.error(error.response?.data?.message || 'Failed to place order');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -421,28 +438,35 @@ const PlaceOrder = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">City*</label>
-                    <input
-                      type="text"
-                      name="city"
-                      value={formData.city}
-                      onChange={onChangeHandler}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                      placeholder="City"
-                      required
-                    />
-                  </div>
-                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">State*</label>
-                    <input
-                      type="text"
+                    <select
                       name="state"
                       value={formData.state}
                       onChange={onChangeHandler}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                      placeholder="State"
                       required
-                    />
+                    >
+                      <option value="">Select State</option>
+                      {nigerianStates.map(state => (
+                        <option key={state} value={state}>{state}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">City*</label>
+                    <select
+                      name="city"
+                      value={formData.city}
+                      onChange={onChangeHandler}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                      required
+                      disabled={!formData.state}
+                    >
+                      <option value="">Select City</option>
+                      {availableCities.map(city => (
+                        <option key={city} value={city}>{city}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Postal Code*</label>
@@ -468,6 +492,7 @@ const PlaceOrder = () => {
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                     placeholder="Country"
                     required
+                    readOnly
                   />
                 </div>
 
@@ -611,20 +636,13 @@ const PlaceOrder = () => {
             <div className='mt-8'>
               <button
                 type='submit'
-                disabled={isCartEmpty()}
+                disabled={isCartEmpty() || isProcessing}
                 className={`w-full py-4 px-6 rounded-xl font-semibold text-white transition-all duration-200 ${isCartEmpty()
                     ? 'bg-gray-300 cursor-not-allowed'
                     : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transform hover:scale-105 shadow-lg hover:shadow-xl'
                   }`}
               >
-                {isCartEmpty() ? (
-                  <span className="flex items-center justify-center">
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-                    </svg>
-                    Cart is Empty
-                  </span>
-                ) : (
+                {isProcessing ? 'Processing...' : (
                   <span className="flex items-center justify-center">
                     <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />

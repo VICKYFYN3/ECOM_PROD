@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 const List = ({ token }) => {
     const [list, setList] = useState([])
     const [loading, setLoading] = useState(false)
+    const [editingStock, setEditingStock] = useState({}) // Track which stock input is being edited
 
     const fetchList = async () => {
         setLoading(true)
@@ -17,7 +18,6 @@ const List = ({ token }) => {
                 toast.error(response.data.message)
             }
         } catch (error) {
-            console.log(error);
             toast.error(error.message)
         } finally {
             setLoading(false)
@@ -45,8 +45,73 @@ const List = ({ token }) => {
                 toast.error(response.data.message);
             }
         } catch (error) {
-            console.log(error);
             toast.error(error.message);
+        }
+    };
+
+    // New function to update stock via direct input
+    const updateStockDirect = async (productId, newValue, size) => {
+        if (!size) {
+            toast.error("Size must be specified for stock updates");
+            return;
+        }
+
+        // Validate input
+        const numericValue = parseInt(newValue);
+        if (isNaN(numericValue) || numericValue < 0) {
+            toast.error("Stock must be a non-negative number");
+            return;
+        }
+
+        try {
+            // Get current stock for this size
+            const currentProduct = list.find(item => item._id === productId);
+            const currentStock = currentProduct?.sizeStock?.[size] || 0;
+            const change = numericValue - currentStock;
+
+            const response = await axios.post(
+                backendURL + "/api/product/update-stock",
+                { productId, quantity: change, size },
+                { headers: { token } }
+            );
+
+            if (response.data.success) {
+                toast.success(`Stock updated for size ${size}`);
+                await fetchList();
+            } else {
+                toast.error(response.data.message);
+            }
+        } catch (error) {
+            toast.error(error.message);
+        }
+    };
+
+    // Handle input change
+    const handleStockInputChange = (productId, size, value) => {
+        setEditingStock(prev => ({
+            ...prev,
+            [`${productId}-${size}`]: value
+        }));
+    };
+
+    // Handle input blur (save on blur)
+    const handleStockInputBlur = (productId, size) => {
+        const inputValue = editingStock[`${productId}-${size}`];
+        if (inputValue !== undefined) {
+            updateStockDirect(productId, inputValue, size);
+            // Clear the editing state
+            setEditingStock(prev => {
+                const newState = { ...prev };
+                delete newState[`${productId}-${size}`];
+                return newState;
+            });
+        }
+    };
+
+    // Handle Enter key press
+    const handleStockInputKeyPress = (e, productId, size) => {
+        if (e.key === 'Enter') {
+            e.target.blur(); // This will trigger the blur handler
         }
     };
 
@@ -60,7 +125,6 @@ const List = ({ token }) => {
                 toast.error(response.data.message);
             }
         } catch (error) {
-            console.log(error);
             toast.error(error.message)
         }
     }
@@ -152,6 +216,9 @@ const List = ({ token }) => {
                                                     <h4 className="text-xs font-medium text-gray-700 uppercase tracking-wide">Size Stock Management</h4>
                                                     {item.sizes.map(size => {
                                                         const sizeStock = item.sizeStock?.[size] || 0;
+                                                        const isEditing = editingStock[`${item._id}-${size}`] !== undefined;
+                                                        const displayValue = isEditing ? editingStock[`${item._id}-${size}`] : sizeStock;
+                                                        
                                                         return (
                                                             <div key={size} className="flex items-center justify-between bg-white border rounded-lg px-3 py-2">
                                                                 <span className="text-sm font-medium text-gray-600 min-w-[1.5rem]">{size}:</span>
@@ -164,9 +231,16 @@ const List = ({ token }) => {
                                                                     >
                                                                         -
                                                                     </button>
-                                                                    <span className="font-bold text-gray-900 min-w-[2rem] text-center text-sm">
-                                                                        {sizeStock}
-                                                                    </span>
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        value={displayValue}
+                                                                        onChange={(e) => handleStockInputChange(item._id, size, e.target.value)}
+                                                                        onBlur={() => handleStockInputBlur(item._id, size)}
+                                                                        onKeyPress={(e) => handleStockInputKeyPress(e, item._id, size)}
+                                                                        className="w-12 h-7 text-center text-sm font-bold text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                        title={`Click to edit ${size} stock directly`}
+                                                                    />
                                                                     <button
                                                                         onClick={() => updateStock(item._id, 1, size)}
                                                                         className="w-7 h-7 flex items-center justify-center bg-green-100 text-green-600 rounded hover:bg-green-200 transition-colors"
@@ -249,6 +323,9 @@ const List = ({ token }) => {
                                         <div className="flex flex-wrap gap-1">
                                             {item.sizes.map(size => {
                                                 const sizeStock = item.sizeStock?.[size] || 0;
+                                                const isEditing = editingStock[`${item._id}-${size}`] !== undefined;
+                                                const displayValue = isEditing ? editingStock[`${item._id}-${size}`] : sizeStock;
+                                                
                                                 return (
                                                     <div key={size} className="flex items-center bg-white rounded border px-1 py-1">
                                                         <span className="text-xs font-medium text-gray-700 mr-1">{size}</span>
@@ -260,9 +337,16 @@ const List = ({ token }) => {
                                                             >
                                                                 -
                                                             </button>
-                                                            <span className="text-xs font-bold text-gray-900 mx-1 min-w-[1rem] text-center">
-                                                                {sizeStock}
-                                                            </span>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                value={displayValue}
+                                                                onChange={(e) => handleStockInputChange(item._id, size, e.target.value)}
+                                                                onBlur={() => handleStockInputBlur(item._id, size)}
+                                                                onKeyPress={(e) => handleStockInputKeyPress(e, item._id, size)}
+                                                                className="w-8 h-5 text-center text-xs font-bold text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                title={`Click to edit ${size} stock directly`}
+                                                            />
                                                             <button
                                                                 onClick={() => updateStock(item._id, 1, size)}
                                                                 className="w-5 h-5 flex items-center justify-center bg-green-100 text-green-600 rounded text-xs hover:bg-green-200"

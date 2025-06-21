@@ -119,10 +119,11 @@ const getReviewableProducts = async (req, res) => {
             });
         });
 
-        console.log('Reviewed product IDs:', reviewedProductIds);
-        console.log('Reviewable products:', reviewableProducts.length);
-
-        res.json({ success: true, products: reviewableProducts });
+        res.json({
+            success: true,
+            reviews: reviews,
+            reviewableProducts: reviewableProducts
+        });
     } catch (error) {
         console.error('Error in getReviewableProducts:', error);
         res.json({ success: false, message: error.message });

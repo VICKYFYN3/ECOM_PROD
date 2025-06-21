@@ -5,8 +5,7 @@ const getAddresses = async (req, res) => {
         const addresses = await addressModel.find({ userId: req.body.userId }).sort({ createdAt: -1 });
         res.json({ success: true, addresses });
     } catch (error) {
-        console.log(error);
-        res.json({ success: false, message: error.message });
+        res.json({success:false, message: error.message})
     }
 };
 
@@ -57,8 +56,7 @@ const addAddress = async (req, res) => {
         await newAddress.save();
         res.json({ success: true, message: 'Address added successfully', address: newAddress });
     } catch (error) {
-        console.log(error);
-        res.json({ success: false, message: error.message });
+        res.json({success:false, message: error.message})
     }
 };
 
@@ -120,8 +118,7 @@ const updateAddress = async (req, res) => {
 
         res.json({ success: true, message: 'Address updated successfully', address: updatedAddress });
     } catch (error) {
-        console.log(error);
-        res.json({ success: false, message: error.message });
+        res.json({success:false, message: error.message})
     }
 };
 
@@ -142,8 +139,7 @@ const deleteAddress = async (req, res) => {
         await addressModel.findByIdAndDelete(addressId);
         res.json({ success: true, message: 'Address deleted successfully' });
     } catch (error) {
-        console.log(error);
-        res.json({ success: false, message: error.message });
+        res.json({success:false, message: error.message})
     }
 };
 
@@ -175,8 +171,7 @@ const setDefaultAddress = async (req, res) => {
 
         res.json({ success: true, message: 'Default address updated successfully' });
     } catch (error) {
-        console.log(error);
-        res.json({ success: false, message: error.message });
+        res.json({success:false, message: error.message})
     }
 };
 

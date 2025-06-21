@@ -77,8 +77,7 @@ const Login = () => {
         }
       }
     } catch (error) {
-      console.log(error);
-      toast.error(error.response?.data?.message || error.message);
+      toast.error(error.response?.data?.message || 'Login failed');
     } finally {
       setIsLoading(false);
     }
@@ -97,7 +96,6 @@ const Login = () => {
         toast.error(response.data.message);
       }
     } catch (error) {
-      console.log(error);
       toast.error(error.response?.data?.message || "Google authentication failed");
     }
   };
@@ -121,7 +119,6 @@ const Login = () => {
         toast.error(response.data.message);
       }
     } catch (error) {
-      console.log(error);
       toast.error(error.response?.data?.message || error.message);
     } finally {
       setIsForgotPasswordLoading(false);
@@ -156,7 +153,6 @@ const Login = () => {
         toast.error(response.data.message);
       }
     } catch (error) {
-      console.log(error);
       toast.error(error.response?.data?.message || error.message);
     } finally {
       setIsResetPasswordLoading(false);

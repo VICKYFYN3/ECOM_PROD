@@ -5,6 +5,8 @@ import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import { OAuth2Client } from 'google-auth-library';
 import { v2 as cloudinary } from 'cloudinary';
+import transporter from "../config/nodemailer.js";
+import { getEmailTemplate } from "../utils/emailTemplates.js";
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Generate a random 6-digit token
@@ -39,8 +41,7 @@ const googleAuth = async (req, res) => {
         res.json({ success: true, token: authToken });
 
     } catch (error) {
-        console.log(error);
-        res.status(500).json({ success: false, message: error.message });
+        res.json({success:false, message: error.message})
     }
 };
 
@@ -182,8 +183,7 @@ const forgotPassword = async (req, res) => {
         res.json({ success: true, message: "Reset code sent to your email" });
 
     } catch (error) {
-        console.log(error);
-        res.status(500).json({ success: false, message: error.message });
+        res.json({success:false, message: error.message})
     }
 };
 
@@ -224,8 +224,7 @@ const resetPassword = async (req, res) => {
         res.json({ success: true, message: "Password updated successfully" });
 
     } catch (error) {
-        console.log(error);
-        res.status(500).json({ success: false, message: error.message });
+        res.json({success:false, message: error.message})
     }
 };
 
@@ -251,8 +250,7 @@ const loginUser = async (req, res) => {
             res.status(401).json({ success: false, message: "Invalid credentials" });
         }
     } catch (error) {
-        console.log(error);
-        res.status(500).json({ success: false, message: error.message });
+        res.json({success:false, message: error.message})
     }
 }
 
@@ -291,8 +289,7 @@ const registerUser = async (req, res) => {
         res.status(201).json({ success: true, token })
 
     } catch (error) {
-        console.log(error);
-        res.status(500).json({ success: false, message: error.message });
+        res.json({success:false, message: error.message})
     }
 }
 
@@ -307,8 +304,7 @@ const adminLogin = async (req, res) => {
             res.status(401).json({ success: false, message: "Invalid credentials" })
         }
     } catch (error) {
-        console.log(error);
-        res.status(500).json({ success: false, message: error.message });
+        res.json({success:false, message: error.message})
     }
 }
 
@@ -324,12 +320,13 @@ const getProfile = async (req, res) => {
             fullName: user.name,
             email: user.email,
             phoneNumber: user.phoneNumber,
-            profilePicture: user.profilePicture
+            profilePicture: user.profilePicture,
+            subscribed: user.subscribed
         };
         
         res.json({ success: true, profile: profileData });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        res.json({success:false, message: error.message})
     }
 };
 
@@ -370,7 +367,7 @@ const updateProfile = async (req, res) => {
         
         res.json({ success: true, profile: profileData });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        res.json({success:false, message: error.message})
     }
 };
 
@@ -398,7 +395,7 @@ const changePassword = async (req, res) => {
         
         res.json({ success: true, message: 'Password updated successfully' });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        res.json({success:false, message: error.message})
     }
 };
 
@@ -412,11 +409,75 @@ const deactivateAccount = async (req, res) => {
         
         res.json({ success: true, message: 'Account deleted successfully' });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        res.json({success:false, message: error.message})
     }
 };
 
+// subscribe to newsletter
+const subscribeToNewsletter = async (req, res) => {
+    try {
+        const userId = req.body.userId;
+        const user = await userModel.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
 
+        user.subscribed = true;
+        await user.save();
+
+        res.json({ success: true, message: "Subscribed to newsletter successfully" });
+    } catch (error) {
+        res.json({success:false, message: "An error occurred while subscribing to the newsletter"})
+    }
+}
+
+// send newsletter
+const sendNewsletter = async (req, res) => {
+    try {
+        const { subject, message } = req.body;
+        if (!subject || !message) {
+            return res.status(400).json({ success: false, message: 'Subject and message are required' });
+        }
+
+        const subscribedUsers = await userModel.find({ subscribed: true });
+
+        if (subscribedUsers.length === 0) {
+            return res.status(404).json({ success: false, message: 'No subscribed users found' });
+        }
+
+        const newsletterHtml = getEmailTemplate(subject, message);
+
+        for (const user of subscribedUsers) {
+            try {
+                const mailOptions = {
+                    from: `"Forever" <${process.env.EMAIL_USER}>`,
+                    to: user.email,
+                    subject: subject,
+                    html: newsletterHtml,
+                };
+                await transporter.sendMail(mailOptions);
+                console.log(`Newsletter sent to ${user.email}`);
+            } catch (error) {
+                console.error(`Failed to send newsletter to ${user.email}:`, error);
+            }
+        }
+
+        res.json({ success: true, message: 'Newsletter sent successfully' });
+
+    } catch (error) {
+        res.json({success:false, message: 'An error occurred while sending the newsletter'})
+    }
+};
+
+// get subscribers count
+const getSubscribersCount = async (req, res) => {
+    try {
+        const count = await userModel.countDocuments({ subscribed: true });
+        res.json({ success: true, count });
+    } catch (error) {
+        res.json({success:false, message: 'An error occurred while fetching the subscribers count'})
+    }
+}
 
 export { 
     loginUser, 
@@ -428,5 +489,8 @@ export {
     updateProfile, 
     changePassword, 
     getProfile, 
-    deactivateAccount
+    deactivateAccount,
+    subscribeToNewsletter,
+    sendNewsletter,
+    getSubscribersCount
 };

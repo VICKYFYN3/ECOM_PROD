@@ -12,6 +12,7 @@ const ShopContextProvider = (props) => {
     const [products, setProducts] = useState([]);
     const [cartItems, setCartItems] = useState({});
     const [token, setToken] = useState('');
+    const [profileData, setProfileData] = useState(null);
 
     // Add to cart function
     const addToCart = async(itemId, size) => {
@@ -41,7 +42,6 @@ const ShopContextProvider = (props) => {
                 await axios.post(backendURL + '/api/cart/add',{itemId,size},{headers:{token}});
                 toast.success('Product added to cart');
             } catch (error) {
-                console.log(error);
                 toast.error(error.message);
             }
         }
@@ -77,7 +77,6 @@ const ShopContextProvider = (props) => {
             try {
                 await axios.post(backendURL + '/api/cart/update',{itemId,size,quantity} , {headers:{token}});
             } catch (error) {
-                console.log(error);
                 toast.error(error.message);
             }
         }
@@ -128,7 +127,6 @@ const ShopContextProvider = (props) => {
                 toast.error(response.data.message);
             }
         } catch (error) {
-            console.log(error);
             toast.error(error.message);
         }
     }
@@ -140,10 +138,20 @@ const ShopContextProvider = (props) => {
                 setCartItems(response.data.cartData);
             }
         } catch (error) {
-            console.log(error);
             toast.error(error.message);
         }
     }
+
+    const getProfileData = async (token) => {
+        try {
+            const response = await axios.post(backendURL + '/api/user/profile/get', {}, { headers: { token } });
+            if (response.data.success) {
+                setProfileData(response.data.profile);
+            }
+        } catch (error) {
+            // Error handling
+        }
+    };
 
     useEffect(() => {
         getProductsData();
@@ -158,8 +166,10 @@ const ShopContextProvider = (props) => {
     useEffect(() => {
         if(token){
             getUserCart(token);
+            getProfileData(token);
         } else {
             setCartItems({});
+            setProfileData(null);
         }
     }, [token]);
 
@@ -181,6 +191,7 @@ const ShopContextProvider = (props) => {
         backendURL,
         setToken,
         token,
+        profileData,
     }
     
     return (

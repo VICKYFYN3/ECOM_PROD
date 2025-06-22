@@ -13,7 +13,10 @@ import {
     subscribeToNewsletter,
     sendNewsletter,
     getSubscribersCount,
-    uploadNewsletterImage
+    uploadNewsletterImage,
+    getUserSessions,
+    signOutAllDevices,
+    signOutDevice
 } from '../controllers/userController.js';
 import authUser from './../middleware/auth.js';
 import upload from '../middleware/multer.js';
@@ -32,6 +35,11 @@ userRouter.post('/profile/get', authUser, getProfile);
 userRouter.post('/profile/update', upload.single('profilePicture'), authUser, updateProfile);
 userRouter.post('/profile/change-password', authUser, changePassword);
 userRouter.post('/deactivate', authUser, deactivateAccount);
+
+// Session management routes
+userRouter.post('/sessions/get', authUser, getUserSessions);
+userRouter.post('/sessions/signout-all', authUser, signOutAllDevices);
+userRouter.post('/sessions/signout-device', authUser, signOutDevice);
 
 // Admin newsletter routes
 userRouter.post('/newsletter/send', adminAuth, sendNewsletter);

@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken'
+import sessionModel from '../models/sessionModel.js'
 
 const authUser = async (req, res, next) => {
 
@@ -10,6 +11,21 @@ const authUser = async (req, res, next) => {
     }
     try {
         const token_decode = jwt.verify(token, process.env.JWT_SECRET)
+        
+        // Check if session is active
+        const session = await sessionModel.findOne({ 
+            token, 
+            isActive: true 
+        });
+        
+        if (!session) {
+            return res.status(401).json({success:false , message: 'Session expired. Please login again'});
+        }
+        
+        // Update last activity
+        await sessionModel.findByIdAndUpdate(session._id, {
+            lastActivity: new Date()
+        });
         
         // Ensure req.body exists (for GET requests that don't have a body)
         if (!req.body) {

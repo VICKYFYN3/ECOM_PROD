@@ -1,4 +1,5 @@
 import userModel from "../models/userModel.js";
+import sessionModel from "../models/sessionModel.js";
 import validator from "validator";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -7,6 +8,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { v2 as cloudinary } from 'cloudinary';
 import transporter from "../config/nodemailer.js";
 import { getEmailTemplate } from "../utils/emailTemplates.js";
+import { getDeviceInfo } from "../utils/deviceInfo.js";
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Generate a random 6-digit token
@@ -38,6 +40,10 @@ const googleAuth = async (req, res) => {
         }
 
         const authToken = createToken(user._id);
+        
+        // Create session for this Google login
+        await createSession(user._id, authToken, req);
+        
         res.json({ success: true, token: authToken });
 
     } catch (error) {
@@ -244,6 +250,10 @@ const loginUser = async (req, res) => {
         const isMatch = await bcrypt.compare(password, user.password);
         if (isMatch) {
             const token = createToken(user._id);
+            
+            // Create session for this login
+            await createSession(user._id, token, req);
+            
             res.json({ success: true, token });
         }
         else {
@@ -286,6 +296,10 @@ const registerUser = async (req, res) => {
         const user = await newUser.save();
 
         const token = createToken(user._id);
+        
+        // Create session for this registration
+        await createSession(user._id, token, req);
+        
         res.status(201).json({ success: true, token })
 
     } catch (error) {
@@ -532,6 +546,82 @@ const getSubscribersCount = async (req, res) => {
     }
 }
 
+// Get user sessions
+const getUserSessions = async (req, res) => {
+    try {
+        const userId = req.body.userId;
+        const sessions = await sessionModel.find({ 
+            userId, 
+            isActive: true 
+        }).sort({ lastActivity: -1 });
+
+        const formattedSessions = sessions.map(session => ({
+            id: session._id,
+            deviceInfo: session.deviceInfo,
+            lastActivity: session.lastActivity,
+            createdAt: session.createdAt,
+            isCurrentSession: session.token === req.headers.token
+        }));
+
+        res.json({ success: true, sessions: formattedSessions });
+    } catch (error) {
+        res.json({ success: false, message: error.message });
+    }
+};
+
+// Sign out from all devices
+const signOutAllDevices = async (req, res) => {
+    try {
+        const userId = req.body.userId;
+        
+        // Deactivate all sessions for this user
+        await sessionModel.updateMany(
+            { userId, isActive: true },
+            { isActive: false }
+        );
+
+        res.json({ success: true, message: 'Signed out from all devices successfully' });
+    } catch (error) {
+        res.json({ success: false, message: error.message });
+    }
+};
+
+// Sign out from specific device
+const signOutDevice = async (req, res) => {
+    try {
+        const { sessionId } = req.body;
+        const userId = req.body.userId;
+
+        const session = await sessionModel.findOneAndUpdate(
+            { _id: sessionId, userId, isActive: true },
+            { isActive: false },
+            { new: true }
+        );
+
+        if (!session) {
+            return res.status(404).json({ success: false, message: 'Session not found' });
+        }
+
+        res.json({ success: true, message: 'Signed out from device successfully' });
+    } catch (error) {
+        res.json({ success: false, message: error.message });
+    }
+};
+
+// Create session helper function
+const createSession = async (userId, token, req) => {
+    const deviceInfo = getDeviceInfo(req.headers['user-agent'], req.ip);
+    
+    const session = new sessionModel({
+        userId,
+        token,
+        deviceInfo
+    });
+    
+    await session.save();
+    return session;
+};
+
 export { 
     loginUser, 
     registerUser, 
@@ -546,5 +636,9 @@ export {
     subscribeToNewsletter,
     sendNewsletter,
     uploadNewsletterImage,
-    getSubscribersCount
+    getSubscribersCount,
+    getUserSessions,
+    signOutAllDevices,
+    signOutDevice,
+    createSession
 };

@@ -8,10 +8,6 @@ const userSchema = new mongoose.Schema({
     subscribed: { type: Boolean, default: false },
     resetToken: { type: String },
     resetTokenExpiry: { type: Date },
-    verificationCode: { type: String },
-    verificationCodeExpiry: { type: Date },
-    isVerified: { type: Boolean, default: false },
-    verificationCodeResendAt: { type: Date },
     profilePicture: String,
     phoneNumber: String
 },{minimize: false});

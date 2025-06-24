@@ -247,15 +247,13 @@ const loginUser = async (req, res) => {
         if (!user) {
             return res.status(404).json({ success: false, message: "User does not exist" });
         }
-        // Block login if not verified and not Google Auth
-        if (!user.isVerified && user.password !== 'google-auth') {
-            return res.status(403).json({ success: false, message: "Please verify your email before logging in." });
-        }
         const isMatch = await bcrypt.compare(password, user.password);
         if (isMatch) {
             const token = createToken(user._id);
+            
             // Create session for this login
             await createSession(user._id, token, req);
+            
             res.json({ success: true, token });
         }
         else {
@@ -288,123 +286,22 @@ const registerUser = async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Generate verification code and expiry
-        const verificationCode = generateResetToken();
-        const verificationCodeExpiry = new Date(Date.now() + 20 * 60 * 1000); // 20 mins
-        const verificationCodeResendAt = new Date(Date.now() + 4 * 60 * 1000); // 4 mins
-
-        //Create a new user (unverified)
+        //Create a new user
         const newUser = new userModel({
             name,
             email,
-            password: hashedPassword,
-            isVerified: false,
-            verificationCode,
-            verificationCodeExpiry,
-            verificationCodeResendAt
+            password: hashedPassword
         })
 
-        await newUser.save();
+        const user = await newUser.save();
 
-        // Send verification email
-        const subject = 'Verify Your Email - Forever';
-        const message = `<div style="text-align:center;">
-            <h2>Welcome, ${name}!</h2>
-            <p>Thank you for signing up. Please verify your email address using the code below:</p>
-            <div style="font-size:32px; font-weight:bold; letter-spacing:8px; margin:20px 0;">${verificationCode}</div>
-            <p>This code will expire in 20 minutes.</p>
-        </div>`;
-        const html = getEmailTemplate(subject, message);
-        await transporter.sendMail({
-            from: `"Forever" <${process.env.EMAIL_USER}>`,
-            to: email,
-            subject,
-            html
-        });
-
-        res.status(201).json({ success: true, message: "Verification code sent to your email. Please verify to complete registration." })
-
-    } catch (error) {
-        res.json({success:false, message: error.message})
-    }
-}
-
-// Email verification endpoint
-const verifyEmail = async (req, res) => {
-    try {
-        const { email, code } = req.body;
-        const user = await userModel.findOne({ email });
-        if (!user) {
-            return res.status(404).json({ success: false, message: "User not found" });
-        }
-        if (user.isVerified) {
-            return res.status(400).json({ success: false, message: "Email already verified" });
-        }
-        if (!user.verificationCode || !user.verificationCodeExpiry) {
-            return res.status(400).json({ success: false, message: "No verification code found. Please request a new one." });
-        }
-        if (user.verificationCode !== code) {
-            return res.status(400).json({ success: false, message: "Invalid verification code" });
-        }
-        if (user.verificationCodeExpiry < new Date()) {
-            return res.status(400).json({ success: false, message: "Verification code expired" });
-        }
-        user.isVerified = true;
-        user.verificationCode = undefined;
-        user.verificationCodeExpiry = undefined;
-        user.verificationCodeResendAt = undefined;
-        await user.save();
-
-        // Create token/session
         const token = createToken(user._id);
+        
+        // Create session for this registration
         await createSession(user._id, token, req);
-        res.json({ success: true, token, message: "Email verified successfully" });
-    } catch (error) {
-        res.json({success:false, message: error.message})
-    }
-}
+        
+        res.status(201).json({ success: true, token })
 
-// Resend verification code endpoint
-const resendVerificationCode = async (req, res) => {
-    try {
-        const { email } = req.body;
-        const user = await userModel.findOne({ email });
-        if (!user) {
-            return res.status(404).json({ success: false, message: "User not found" });
-        }
-        if (user.isVerified) {
-            return res.status(400).json({ success: false, message: "Email already verified" });
-        }
-        if (user.verificationCodeResendAt && user.verificationCodeResendAt > new Date()) {
-            const wait = Math.ceil((user.verificationCodeResendAt - new Date()) / 1000);
-            return res.status(429).json({ success: false, message: `Please wait ${wait} seconds before requesting another code.` });
-        }
-        // Generate new code and expiry
-        const verificationCode = generateResetToken();
-        const verificationCodeExpiry = new Date(Date.now() + 20 * 60 * 1000); // 20 mins
-        const verificationCodeResendAt = new Date(Date.now() + 4 * 60 * 1000); // 4 mins
-        user.verificationCode = verificationCode;
-        user.verificationCodeExpiry = verificationCodeExpiry;
-        user.verificationCodeResendAt = verificationCodeResendAt;
-        await user.save();
-
-        // Send verification email
-        const subject = 'Verify Your Email - Forever';
-        const message = `<div style="text-align:center;">
-            <h2>Hello, ${user.name}!</h2>
-            <p>Your new verification code is:</p>
-            <div style="font-size:32px; font-weight:bold; letter-spacing:8px; margin:20px 0;">${verificationCode}</div>
-            <p>This code will expire in 20 minutes.</p>
-        </div>`;
-        const html = getEmailTemplate(subject, message);
-        await transporter.sendMail({
-            from: `"Forever" <${process.env.EMAIL_USER}>`,
-            to: email,
-            subject,
-            html
-        });
-
-        res.json({ success: true, message: "Verification code resent to your email." });
     } catch (error) {
         res.json({success:false, message: error.message})
     }
@@ -743,7 +640,5 @@ export {
     getUserSessions,
     signOutAllDevices,
     signOutDevice,
-    createSession,
-    verifyEmail,
-    resendVerificationCode
+    createSession
 };

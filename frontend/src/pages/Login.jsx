@@ -26,6 +26,12 @@ const Login = () => {
   const [newPassword, setNewPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [resetStep, setResetStep] = useState('email'); // 'email' or 'token'
+  const [verificationEmail, setVerificationEmail] = useState('');
+  const [verificationStep, setVerificationStep] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [resendTimer, setResendTimer] = useState(0);
 
   // Loading states
   const [isLoading, setIsLoading] = useState(false);
@@ -49,6 +55,7 @@ const Login = () => {
       if (currentState === 'Sign Up') {
         if (formData.password !== formData.confirmPassword) {
           toast.error("Passwords don't match");
+          setIsLoading(false);
           return;
         }
         const response = await axios.post(backendURL + '/api/user/register', {
@@ -57,9 +64,10 @@ const Login = () => {
           password: formData.password
         });
         if (response.data.success) {
-          setToken(response.data.token);
-          localStorage.setItem('token', response.data.token);
-          toast.success("Registration successful!");
+          setVerificationEmail(formData.email);
+          setVerificationStep(true);
+          setResendTimer(240); // 4 minutes
+          toast.success("Verification code sent to your email!");
         } else {
           toast.error(response.data.message);
         }
@@ -166,6 +174,65 @@ const Login = () => {
     setResetStep('email');
   };
 
+  // Verification code submit handler
+  const handleVerifyCode = async () => {
+    if (isVerifying) return;
+    setIsVerifying(true);
+    try {
+      const response = await axios.post(backendURL + '/api/user/verify-email', {
+        email: verificationEmail,
+        code: verificationCode
+      });
+      if (response.data.success) {
+        setToken(response.data.token);
+        localStorage.setItem('token', response.data.token);
+        toast.success("Email verified and registration complete!");
+        setVerificationStep(false);
+        setVerificationEmail('');
+        setVerificationCode('');
+        navigate('/');
+      } else {
+        toast.error(response.data.message);
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Verification failed');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  // Resend code handler
+  const handleResendCode = async () => {
+    if (isResending || resendTimer > 0) return;
+    setIsResending(true);
+    try {
+      const response = await axios.post(backendURL + '/api/user/resend-verification-code', {
+        email: verificationEmail
+      });
+      if (response.data.success) {
+        toast.success("Verification code resent!");
+        setResendTimer(240); // 4 minutes
+      } else {
+        toast.error(response.data.message);
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to resend code');
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  // Timer effect for resend
+  useEffect(() => {
+    let timer;
+    if (verificationStep && resendTimer > 0) {
+      timer = setInterval(() => {
+        setResendTimer((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [verificationStep, resendTimer]);
+
   useEffect(() => {
     if (token) {
       navigate('/');
@@ -174,111 +241,63 @@ const Login = () => {
 
   return (
     <div className='flex flex-col items-center w-[90%] sm:max-w-96 m-auto mt-14 gap-4 text-gray-800'>
-      {forgotPasswordEmail !== '' ? (
+      {verificationStep ? (
         <div className='w-full'>
           <div className='inline-flex items-center gap-2 mb-2 mt-10'>
-            <p className='prata-regular text-3xl'>Reset Password</p>
+            <p className='prata-regular text-3xl'>Verify Email</p>
             <hr className='border-none h-[1.5px] w-8 bg-gray-800'/>
           </div>
-          
-          {resetStep === 'email' ? (
-            // Email input step
-            <div className='space-y-4'>
-              <div className='relative'>
-                <Mail className='absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400' size={18} />
-                <input
-                  type="email"
-                  value={forgotPasswordEmail}
-                  onChange={(e) => setForgotPasswordEmail(e.target.value)}
-                  className='w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-black transition-colors'
-                  placeholder='Enter your email address'
-                  required
-                  disabled={isForgotPasswordLoading}
-                />
-              </div>
-              <button 
-                onClick={handleForgotPassword}
-                disabled={isForgotPasswordLoading}
-                className='bg-black text-white font-light px-8 py-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer w-full disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2'
-              >
-                {isForgotPasswordLoading && <Loader2 size={18} className="animate-spin" />}
-                {isForgotPasswordLoading ? 'Sending...' : 'Send Reset Code'}
-              </button>
+          <div className='bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4'>
+            <div className='flex items-center gap-2 mb-2'>
+              <Key size={16} className='text-blue-600' />
+              <p className='text-sm font-medium text-blue-800'>Check your email</p>
             </div>
-          ) : (
-            // Token and new password input step
-            <div className='space-y-4'>
-              <div className='bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4'>
-                <div className='flex items-center gap-2 mb-2'>
-                  <Key size={16} className='text-blue-600' />
-                  <p className='text-sm font-medium text-blue-800'>Check your email</p>
-                </div>
-                <p className='text-sm text-blue-700'>
-                  We've sent a 6-digit reset code to <strong>{forgotPasswordEmail}</strong>
-                </p>
-              </div>
-              
-              <div className='relative'>
-                <Key className='absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400' size={18} />
-                <input
-                  type="text"
-                  value={resetToken}
-                  onChange={(e) => setResetToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className='w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-black transition-colors text-center text-xl tracking-widest font-mono'
-                  placeholder='000000'
-                  maxLength="6"
-                  required
-                  disabled={isResetPasswordLoading}
-                />
-              </div>
-              
-              <div className='relative'>
-                <Lock className='absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400' size={18} />
-                <input
-                  type={showNewPassword ? "text" : "password"}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className='w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-black transition-colors'
-                  placeholder='New Password (min 8 characters)'
-                  required
-                  disabled={isResetPasswordLoading}
-                />
-                <button
-                  type="button"
-                  className='absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600'
-                  onClick={() => setShowNewPassword(!showNewPassword)}
-                  disabled={isResetPasswordLoading}
-                >
-                  {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-              
-              <button 
-                onClick={handleResetPassword}
-                disabled={isResetPasswordLoading}
-                className='bg-black text-white font-light px-8 py-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer w-full disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2'
-              >
-                {isResetPasswordLoading && <Loader2 size={18} className="animate-spin" />}
-                {isResetPasswordLoading ? 'Resetting...' : 'Reset Password'}
-              </button>
-              
-              <button 
-                type="button"
-                onClick={() => setResetStep('email')}
-                className='text-sm text-gray-600 hover:text-black transition-colors w-full text-center'
-                disabled={isResetPasswordLoading}
-              >
-                Didn't receive the code? Try again
-              </button>
+            <p className='text-sm text-blue-700'>
+              We've sent a 6-digit verification code to <strong>{verificationEmail}</strong>
+            </p>
+          </div>
+          <div className='space-y-4'>
+            <div className='relative'>
+              <Key className='absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400' size={18} />
+              <input
+                type="text"
+                value={verificationCode}
+                onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                className='w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-black transition-colors text-center text-xl tracking-widest font-mono'
+                placeholder='000000'
+                maxLength="6"
+                required
+                disabled={isVerifying}
+              />
             </div>
-          )}
-          
-          <p 
-            className='cursor-pointer text-sm mt-6 text-center text-gray-600 hover:text-black transition-colors'
-            onClick={resetPasswordFlow}
-          >
-            ← Back to Login
-          </p>
+            <button
+              onClick={handleVerifyCode}
+              disabled={isVerifying || verificationCode.length !== 6}
+              className='bg-black text-white font-light px-8 py-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer w-full disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2'
+            >
+              {isVerifying && <Loader2 size={18} className="animate-spin" />}
+              {isVerifying ? 'Verifying...' : 'Verify Email'}
+            </button>
+            <button
+              type="button"
+              onClick={handleResendCode}
+              disabled={isResending || resendTimer > 0}
+              className='text-sm text-gray-600 hover:text-black transition-colors w-full text-center disabled:opacity-50 disabled:cursor-not-allowed'
+            >
+              {isResending ? 'Resending...' : resendTimer > 0 ? `Resend code in ${resendTimer}s` : "Didn't receive the code? Resend"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setVerificationStep(false);
+                setVerificationEmail('');
+                setVerificationCode('');
+              }}
+              className='text-sm text-gray-600 hover:text-black transition-colors w-full text-center'
+            >
+              ← Back to Sign Up
+            </button>
+          </div>
         </div>
       ) : (
         <form onSubmit={onSubmitHandler} className='w-full'>

@@ -16,7 +16,9 @@ import {
     uploadNewsletterImage,
     getUserSessions,
     signOutAllDevices,
-    signOutDevice
+    signOutDevice,
+    verifyEmail,
+    resendVerificationCode
 } from '../controllers/userController.js';
 import authUser from './../middleware/auth.js';
 import upload from '../middleware/multer.js';
@@ -28,6 +30,8 @@ userRouter.post('/google-auth', googleAuth);
 userRouter.post('/forgot-password', forgotPassword);
 userRouter.post('/reset-password', resetPassword);
 userRouter.post('/register', registerUser);
+userRouter.post('/verify-email', verifyEmail);
+userRouter.post('/resend-verification-code', resendVerificationCode);
 userRouter.post('/login', loginUser);
 userRouter.post('/admin', adminLogin);
 userRouter.post('/subscribe', authUser, subscribeToNewsletter);

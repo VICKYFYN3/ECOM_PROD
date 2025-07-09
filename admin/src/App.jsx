@@ -10,15 +10,13 @@ import { Toaster } from 'sonner';
 import Compose from './pages/Compose';
 import ContactMessages from './pages/ContactMessages';
 import ScrollToTop from "./components/ScrollToTop";
+import { useAuth } from './context/AuthContext';
 
 export const backendURL = import.meta.env.VITE_BACKEND_URL
 export const currency = '₦'
 const App = () => {
 
-  const [token, setToken] = useState(localStorage.getItem('token')?localStorage.getItem('token') : '');
-  useEffect(() => {
-    localStorage.setItem('token', token);
-  },[token])
+  const { token, setToken } = useAuth();
 
   return (
     <>

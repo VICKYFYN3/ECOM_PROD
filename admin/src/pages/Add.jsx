@@ -3,8 +3,16 @@ import { assets } from '../assets/assets'
 import axios from 'axios';
 import { backendURL } from '../App';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
-const Add = ({ token }) => {
+const Add = () => {
+    const navigate = useNavigate();
+    const { token } = useAuth();
+    if (!token) {
+        navigate('/'); // Redirect to login
+        return null;
+    }
 
     const [image1, setImage1] = useState(false);
     const [image2, setImage2] = useState(false);

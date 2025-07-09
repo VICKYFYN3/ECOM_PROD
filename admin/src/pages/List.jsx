@@ -2,8 +2,16 @@ import axios from 'axios'
 import React, { useEffect, useState } from 'react'
 import { backendURL, currency } from '../App'
 import { toast } from 'sonner'
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
-const List = ({ token }) => {
+const List = () => {
+    const { token } = useAuth();
+    const navigate = useNavigate();
+    if (!token) {
+        navigate('/'); // Redirect to login
+        return null;
+    }
     const [list, setList] = useState([])
     const [loading, setLoading] = useState(false)
     const [editingStock, setEditingStock] = useState({}) // Track which stock input is being edited

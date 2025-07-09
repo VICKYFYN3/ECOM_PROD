@@ -2,8 +2,16 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { backendURL, currency } from '../App';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
-const Orders = ({ token }) => {
+const Orders = () => {
+    const { token } = useAuth();
+    const navigate = useNavigate();
+    if (!token) {
+        navigate('/'); // Redirect to login
+        return null;
+    }
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(false);
 

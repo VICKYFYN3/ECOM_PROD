@@ -2,8 +2,16 @@ import axios from 'axios'
 import React, { useEffect, useState } from 'react'
 import { backendURL } from '../App'
 import { toast } from 'sonner'
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
-const ContactMessages = ({ token }) => {
+const ContactMessages = () => {
+    const { token } = useAuth();
+    const navigate = useNavigate();
+    if (!token) {
+        navigate('/'); // Redirect to login
+        return null;
+    }
     const [messages, setMessages] = useState([])
     const [loading, setLoading] = useState(false)
     const [stats, setStats] = useState({})

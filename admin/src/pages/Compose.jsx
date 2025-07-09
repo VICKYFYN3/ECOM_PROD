@@ -2,8 +2,16 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { backendURL } from '../App';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
-const Compose = ({ token }) => {
+const Compose = () => {
+    const { token } = useAuth();
+    const navigate = useNavigate();
+    if (!token) {
+        navigate('/'); // Redirect to login
+        return null;
+    }
     const [subject, setSubject] = useState('');
     const [message, setMessage] = useState('');
     const [subscriberCount, setSubscriberCount] = useState(0);

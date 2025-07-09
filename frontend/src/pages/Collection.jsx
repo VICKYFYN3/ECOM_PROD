@@ -3,14 +3,26 @@ import { ShopContext } from '../context/ShopContext'
 import { assets } from '../assets/assets'
 import Title from '../components/Title'
 import ProductItem from '../components/ProductItem'
+import { useLocation } from 'react-router-dom'
 
 const Collection = () => {
-  const { products, search, showSearch } = useContext(ShopContext)
+  const { products, search, showSearch, setShowSearch } = useContext(ShopContext)
   const [showFilter, setShowFilter] = useState(false);
   const [filterProducts, setFilterProducts] = useState([]);
   const [category, setCategory] = useState([]);
   const [subCategory, setSubCategory] = useState([]);
   const [sortType, setSortType] = useState(['relevant'])
+  const location = useLocation();
+
+  // Open search bar if redirected from search icon
+  React.useEffect(() => {
+    if (location.state && location.state.openSearch) {
+      setShowSearch(true);
+      // Remove the state so it doesn't trigger again
+      window.history.replaceState({}, document.title);
+    }
+  }, [location, setShowSearch]);
+
   const toggleCategory = (e) => {
 
     if (category.includes(e.target.value)) {

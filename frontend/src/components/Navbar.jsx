@@ -76,18 +76,15 @@ const Navbar = () => {
 
                 {/* Right Side Icons - with unique animated indicators */}
                 <div className='flex items-center gap-6'>
-                    {/* Search with ripple effect - only show on collection page */}
-                    {isCollectionPage && (
-                        <div className="relative cursor-pointer group" onClick={() => setShowSearch(true)}>
-                            <div className="absolute inset-0 rounded-full bg-purple-200 scale-0 group-hover:scale-150 opacity-0 group-hover:opacity-30 transition-all duration-500"></div>
-                            <img src={assets.search_icon} className='w-5 relative transform group-hover:rotate-12 transition-transform duration-300' alt="" />
-                        </div>
-                    )}
-
-                    {/* Profile dropdown - redesigned */}
-                    <div className='group relative'>
+                    {/* Search with ripple effect - show on all pages */}
+                    <div className="relative cursor-pointer group" onClick={() => { navigate('/collection', { state: { openSearch: true } }); }}>
+                        <div className="absolute inset-0 rounded-full bg-purple-200 scale-0 group-hover:scale-150 opacity-0 group-hover:opacity-30 transition-all duration-500"></div>
+                        <img src={assets.search_icon} className='w-5 relative transform group-hover:rotate-12 transition-transform duration-300' alt="" />
+                    </div>
+                    {/* Profile dropdown - redesigned - hide on mobile */}
+                    <div className='group relative hidden sm:block'>
                         <div className="absolute inset-0 rounded-full bg-pink-200 scale-0 group-hover:scale-150 opacity-0 group-hover:opacity-30 transition-all duration-500"></div>
-                        <img onClick={() => token ? null : navigate('/login')} src={assets.profile_icon} className='w-5 cursor-pointer relative' alt="" />
+                        <img onClick={handleProfileClick} src={assets.profile_icon} className='w-5 cursor-pointer relative' alt="" />
                         {/* Dropdown */}
                         {token && 
                         <div className='invisible group-hover:visible opacity-0 group-hover:opacity-100 absolute dropdown-menu right-0 pt-3 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0'>
@@ -179,26 +176,18 @@ const Navbar = () => {
                                                         setVisible(false)
                                                         setShowMobileProfileDropdown(false)
                                                     }} className='cursor-pointer hover:bg-purple-50 py-2 px-4 text-gray-700 hover:text-purple-700 transition-colors'>My Profile</p>
-                                                    <p onClick={() => {
-                                                        navigate('/orders')
-                                                        setVisible(false)
-                                                        setShowMobileProfileDropdown(false)
-                                                    }} className='cursor-pointer hover:bg-purple-50 py-2 px-4 text-gray-700 hover:text-purple-700 transition-colors'>Orders</p>
                                                     <p onClick={logout} className='cursor-pointer hover:bg-purple-50 py-2 px-4 text-gray-700 hover:text-purple-700 transition-colors'>Logout</p>
                                                 </div>
                                             </div>
                                         )}
                                     </div>
-                                    
-                                    {/* Search icon in mobile menu - only show on collection page */}
-                                    {isCollectionPage && (
-                                        <div className="flex flex-col items-center gap-1 text-xs text-gray-500">
-                                            <div className="w-10 h-10 rounded-full bg-pink-100 flex items-center justify-center text-pink-600" onClick={() => setShowSearch(true)}>
-                                                <img src={assets.search_icon} className="w-5" alt="" />
-                                            </div>
-                                            <span>Search</span>
+                                    {/* Search icon in mobile menu - show on all pages */}
+                                    <div className="flex flex-col items-center gap-1 text-xs text-gray-500">
+                                        <div className="w-10 h-10 rounded-full bg-pink-100 flex items-center justify-center text-pink-600" onClick={() => { navigate('/collection', { state: { openSearch: true } }); }}>
+                                            <img src={assets.search_icon} className="w-5" alt="" />
                                         </div>
-                                    )}
+                                        <span>Search</span>
+                                    </div>
                                     
                                     <Link to="/cart" className="flex flex-col items-center gap-1 text-xs text-gray-500">
                                         <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600 relative">

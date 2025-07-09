@@ -12,6 +12,8 @@ const Collection = () => {
   const [category, setCategory] = useState([]);
   const [subCategory, setSubCategory] = useState([]);
   const [sortType, setSortType] = useState(['relevant'])
+  const [currentPage, setCurrentPage] = useState(1);
+  const productsPerPage = 12;
   const location = useLocation();
 
   // Open search bar if redirected from search icon
@@ -81,6 +83,20 @@ const Collection = () => {
     sortProduct();
   }, [sortType])
 
+  // Calculate total pages
+  const totalPages = Math.ceil(filterProducts.length / productsPerPage);
+
+  // Get products for current page
+  const paginatedProducts = filterProducts.slice(
+    (currentPage - 1) * productsPerPage,
+    currentPage * productsPerPage
+  );
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [category, subCategory, search, showSearch, products]);
+
   return (
     <div className='flex flex-col sm:flex-row gap-1 sm:gap-10 pt-10 border-t'>
 
@@ -134,11 +150,64 @@ const Collection = () => {
         {/* Map products */}
         <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 gap-y-6'>
           {
-            filterProducts.map((item, index) => (
+            paginatedProducts.map((item, index) => (
               <ProductItem key={index} name={item.name} id={item._id} price={item.price} image={item.image} stockQuantity={item.stockQuantity} />
             ))
           }
         </div>
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex flex-wrap justify-center mt-8 gap-2">
+            <button
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="min-w-[40px] px-4 py-2 border rounded-full text-base bg-white shadow-sm disabled:opacity-50"
+            >
+              Prev
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => {
+              // Show only first, last, current, and neighbors on mobile
+              if (
+                i + 1 === 1 ||
+                i + 1 === totalPages ||
+                Math.abs(currentPage - (i + 1)) <= 1
+              ) {
+                return (
+                  <button
+                    key={i + 1}
+                    onClick={() => setCurrentPage(i + 1)}
+                    className={`min-w-[40px] px-4 py-2 border rounded-full text-base ${
+                      currentPage === i + 1
+                        ? 'bg-gray-800 text-white font-bold'
+                        : 'bg-white'
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                );
+              }
+              // Show ellipsis for skipped pages
+              if (
+                (i + 1 === currentPage - 2 && currentPage > 3) ||
+                (i + 1 === currentPage + 2 && currentPage < totalPages - 2)
+              ) {
+                return (
+                  <span key={i + 1} className="px-2 text-lg select-none">
+                    ...
+                  </span>
+                );
+              }
+              return null;
+            })}
+            <button
+              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="min-w-[40px] px-4 py-2 border rounded-full text-base bg-white shadow-sm disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

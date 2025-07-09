@@ -1,5 +1,5 @@
 import React from 'react'
-import {Routes,Route} from 'react-router-dom'
+import {Routes,Route, BrowserRouter} from 'react-router-dom'
 import Home from './pages/Home'
 import Orders from './pages/Orders'
 import Collection from './pages/Collection'
@@ -16,30 +16,34 @@ import { Toaster } from 'sonner';
 import Verify from './pages/Verify'
 import VerifyPaystack from './pages/VerifyPaystack';
 import UserProfile from './pages/UserProfile';
+import ScrollToTop from "./components/ScrollToTop";
 
-const App = () => {
+function App() {
   return (
-    <div className='px-4 sm:px-[5vw] md:px-[7vw] lg:px-[4vw]'>
-      <Toaster closeButton richColors position='top-right' />
-      <Navbar />
-      <SearchBar />
-      <Routes>
-        <Route path='/' element={<Home />} />
-        <Route path='/collection' element={<Collection />} />
-        <Route path='/product/:productId' element={<Product />} />
-        <Route path='/orders' element={<Orders />} />
-        <Route path='/cart' element={<Cart />} />
-        <Route path='/login' element={<Login />} />
-        <Route path='/place-order' element={<PlaceOrder />} />
-        <Route path='/about' element={<About />} />
-        <Route path='/contact' element={<Contact />} />
-        <Route path='/verify' element={<Verify />} />
-        <Route path="/verify-paystack" element={<VerifyPaystack />} />
-        <Route path="/profile" element={<UserProfile />} />
-      </Routes>
-      <Footer />
-    </div>
-  ) 
+    <>
+      <ScrollToTop />
+      <div className='px-4 sm:px-[5vw] md:px-[7vw] lg:px-[4vw]'>
+        <Toaster closeButton richColors position='top-right' />
+        <Navbar />
+        <SearchBar />
+        <Routes>
+          <Route path='/' element={<Home />} />
+          <Route path='/collection' element={<Collection />} />
+          <Route path='/product/:productId' element={<Product />} />
+          <Route path='/orders' element={<Orders />} />
+          <Route path='/cart' element={<Cart />} />
+          <Route path='/login' element={<Login />} />
+          <Route path='/place-order' element={<PlaceOrder />} />
+          <Route path='/about' element={<About />} />
+          <Route path='/contact' element={<Contact />} />
+          <Route path='/verify' element={<Verify />} />
+          <Route path="/verify-paystack" element={<VerifyPaystack />} />
+          <Route path="/profile" element={<UserProfile />} />
+        </Routes>
+        <Footer />
+      </div>
+    </>
+  )
 }
 
 export default App

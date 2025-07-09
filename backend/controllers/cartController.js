@@ -57,4 +57,26 @@ const getUserCart = async (req,res) => {
     }
 }
 
-export {addToCart,updateCart,getUserCart}
+// Remove item from user cart
+const removeFromCart = async (req, res) => {
+    try {
+        const { userId, itemId, size } = req.body;
+        const userData = await userModel.findById(userId);
+        let cartData = userData.cartData;
+
+        if (cartData[itemId] && cartData[itemId][size]) {
+            delete cartData[itemId][size];
+            if (Object.keys(cartData[itemId]).length === 0) {
+                delete cartData[itemId];
+            }
+            await userModel.findByIdAndUpdate(userId, { cartData });
+            res.json({ success: true, message: "Item removed from cart" });
+        } else {
+            res.json({ success: false, message: "Item not found in cart" });
+        }
+    } catch (error) {
+        res.json({ success: false, message: error.message });
+    }
+};
+
+export { addToCart, updateCart, getUserCart, removeFromCart };

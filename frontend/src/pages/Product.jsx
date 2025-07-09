@@ -36,7 +36,6 @@ const Product = () => {
     }
 
     addToCart(productData._id, size);
-    toast.success(`${productData.name} (Size: ${size}) added to cart!`);
   };
 
   // Calculate star display

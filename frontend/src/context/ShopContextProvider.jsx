@@ -48,18 +48,22 @@ const ShopContextProvider = (props) => {
     }
     
     // Remove from cart function
-    const removeFromCart = (itemId, size) => {
+    const removeFromCart = async (itemId, size) => {
         let cartData = structuredClone(cartItems);
-        
         if(cartData[itemId] && cartData[itemId][size]) {
             delete cartData[itemId][size];
-            
             if(Object.keys(cartData[itemId]).length === 0) {
                 delete cartData[itemId];
             }
-            
             setCartItems(cartData);
             toast.info('Product removed from cart');
+            if(token){
+                try {
+                    await axios.post(backendURL + '/api/cart/remove', { itemId, size }, { headers: { token } });
+                } catch (error) {
+                    toast.error(error.message);
+                }
+            }
         }
     }
     

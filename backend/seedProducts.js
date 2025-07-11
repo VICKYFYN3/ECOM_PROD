@@ -7,7 +7,7 @@ import productModel from './models/productModel.js';
 
 const NUM_PRODUCTS = 100;
 
-const categories = ['Topwear', 'Bottomwear', 'Winterwear'];
+const categories = ['Men', 'Women', 'Kids'];
 const subCategories = ['Topwear', 'Bottomwear', 'Winterwear'];
 const sizesList = ['S', 'M', 'L', 'XL'];
 

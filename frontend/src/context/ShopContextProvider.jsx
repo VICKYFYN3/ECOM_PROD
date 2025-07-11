@@ -37,10 +37,10 @@ const ShopContextProvider = (props) => {
         }
         
         setCartItems(cartData);
+        toast.success('Product added to cart');
         if(token){
             try {
                 await axios.post(backendURL + '/api/cart/add',{itemId,size},{headers:{token}});
-                toast.success('Product added to cart');
             } catch (error) {
                 toast.error(error.message);
             }

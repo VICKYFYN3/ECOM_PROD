@@ -111,6 +111,12 @@ const PlaceOrder = () => {
   const onSubmitHandler = async (event) => {
     event.preventDefault();
 
+    if (!token) {
+      toast.error('Please login to proceed');
+      navigate('/login');
+      return;
+    }
+
     if (addressTab === 'new') {
       if (!validateAddressForm()) return;
       const success = await handleAddAddress();

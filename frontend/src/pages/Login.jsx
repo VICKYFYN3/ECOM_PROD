@@ -375,16 +375,26 @@ const Login = () => {
           )}
           
           <div className='w-full flex justify-between text-sm mt-[-8px] mb-4'>
-            <p 
-              className='cursor-pointer hover:text-black transition-colors'
+            <p
+              className='cursor-pointer font-bold text-base text-blue-600 hover:underline hover:text-blue-800 transition-colors duration-150'
               onClick={() => setForgotPasswordEmail(' ')}
             >
               Forgot your Password?
             </p>
             {
               currentState === 'Login'
-              ? <p className='cursor-pointer hover:text-black transition-colors' onClick={() => setCurrentState('Sign Up')}>Create an account</p>
-              : <p className='cursor-pointer hover:text-black transition-colors' onClick={() => setCurrentState('Login')}>Already have an account?</p>
+              ? <p
+                  className='cursor-pointer font-bold text-base text-blue-600 hover:underline hover:text-blue-800 transition-colors duration-150'
+                  onClick={() => setCurrentState('Sign Up')}
+                >
+                  Create an account
+                </p>
+              : <p
+                  className='cursor-pointer font-bold text-base text-blue-600 hover:underline hover:text-blue-800 transition-colors duration-150'
+                  onClick={() => setCurrentState('Login')}
+                >
+                  Already have an account?
+                </p>
             }
           </div>
           

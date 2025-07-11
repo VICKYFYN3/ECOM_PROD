@@ -3,6 +3,22 @@ import { ShopContext } from "./ShopContext";
 import axios from 'axios';
 import { toast } from 'sonner';
 
+function mergeCarts(cartA, cartB) {
+    // Merge two cart objects, summing quantities for same item/size
+    const merged = { ...cartA };
+    for (const itemId in cartB) {
+        if (!merged[itemId]) merged[itemId] = {};
+        for (const size in cartB[itemId]) {
+            if (merged[itemId][size]) {
+                merged[itemId][size] += cartB[itemId][size];
+            } else {
+                merged[itemId][size] = cartB[itemId][size];
+            }
+        }
+    }
+    return merged;
+}
+
 const ShopContextProvider = (props) => {
     const currency = '₦';
     const delivery_fee = 3000;
@@ -175,6 +191,50 @@ const ShopContextProvider = (props) => {
             setCartItems({});
             setProfileData(null);
         }
+    }, [token]);
+
+    // Persist guest cart to localStorage when not logged in
+    useEffect(() => {
+        if (!token) {
+            localStorage.setItem('guest_cart', JSON.stringify(cartItems));
+        }
+    }, [cartItems, token]);
+
+    // On mount, load guest cart if not logged in
+    useEffect(() => {
+        if (!token) {
+            const guestCart = localStorage.getItem('guest_cart');
+            if (guestCart) {
+                setCartItems(JSON.parse(guestCart));
+            }
+        }
+    }, [token]);
+
+    // On login, merge guest cart with backend cart, update backend, and clear guest cart
+    useEffect(() => {
+        const mergeAndSyncCart = async () => {
+            const guestCart = localStorage.getItem('guest_cart');
+            if (token && guestCart) {
+                try {
+                    // Get backend cart
+                    const response = await axios.post(backendURL + '/api/cart/get', {}, { headers: { token } });
+                    let backendCart = response.data.success ? response.data.cartData : {};
+                    // Merge
+                    const mergedCart = mergeCarts(backendCart, JSON.parse(guestCart));
+                    // Update backend for each item/size in mergedCart
+                    for (const itemId in mergedCart) {
+                        for (const size in mergedCart[itemId]) {
+                            await axios.post(backendURL + '/api/cart/update', { itemId, size, quantity: mergedCart[itemId][size] }, { headers: { token } });
+                        }
+                    }
+                    setCartItems(mergedCart);
+                    localStorage.removeItem('guest_cart');
+                } catch (error) {
+                    toast.error('Failed to merge guest cart');
+                }
+            }
+        };
+        mergeAndSyncCart();
     }, [token]);
 
     const value = {

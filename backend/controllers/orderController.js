@@ -336,12 +336,12 @@ const placeOrderPaystack = async (req, res) => {
 
         // Send admin notification email
         if (process.env.NOTIFY_EMAIL) {
-            const emailHtml = getOrderConfirmationEmail(newOrder);
+            const adminHtml = getAdminOrderNotificationEmail(newOrder);
             await transporter.sendMail({
                 from: `"Forever" <${process.env.EMAIL_USER}>`,
                 to: process.env.NOTIFY_EMAIL,
-                subject: 'New Order Placed',
-                html: emailHtml
+                subject: undefined, // will be set by getAdminOrderNotificationEmail
+                html: adminHtml
             });
         }
 

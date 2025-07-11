@@ -201,3 +201,69 @@ export const getOrderStatusUpdateEmail = (order) => {
 
     return getEmailTemplate(subject, message, preheader);
 };
+
+// ADMIN: Order notification email (styled, with all order details)
+export const getAdminOrderNotificationEmail = (order) => {
+    const { items, address, amount } = order;
+    const subject = `New Order Placed (Order #${order._id.toString().slice(-6)})`;
+    const preheader = `A new order has been placed. Order #${order._id.toString().slice(-6)}.`;
+    const currency = '₦';
+
+    const message = `
+        <div style="font-size: 16px; color: #333; line-height: 1.6;">
+            <h3 style="font-size: 22px; font-weight: 600; margin: 0 0 15px;">New Order Received</h3>
+            <p style="margin: 0 0 25px;">A new order has been placed on the store. See details below.</p>
+            <h4 style="font-size: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 30px; margin-bottom: 20px;">Order Summary ( #${order._id.toString().slice(-6)} )</h4>
+            <table style="width: 100%; border-collapse: collapse;">
+                ${items.map(item => `
+                    <tr style=\"border-bottom: 1px solid #eee;\">
+                        <td style=\"padding: 15px 0;\">
+                            <div style=\"display: flex; align-items: center;\">
+                                <img src=\"${item.image}\" alt=\"${item.name}\" style=\"width: 65px; height: 65px; object-fit: cover; border-radius: 10px; margin-right: 15px; border: 1px solid #eee;\">
+                                <div>
+                                    <strong style=\"font-size: 16px; display: block; margin-bottom: 4px;\">${item.name}</strong>
+                                    <span style=\"font-size: 14px; color: #666;\">Size: ${item.size} &nbsp;|&nbsp; Qty: ${item.quantity}</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td style=\"text-align: right; font-weight: 600;\">${currency}${(item.price * item.quantity).toLocaleString()}</td>
+                    </tr>
+                `).join('')}
+            </table>
+            <h4 style=\"font-size: 18px; margin-top: 30px;\">Order Total: <span style=\"color: #764ba2;\">${currency}${amount.toLocaleString()}</span></h4>
+            <h4 style=\"font-size: 18px; margin-top: 30px;\">Customer Information</h4>
+            <p style=\"margin: 0; line-height: 1.6; color: #555;\">
+                <strong>Name:</strong> ${address.firstName} ${address.lastName}<br>
+                <strong>Email:</strong> ${address.email}<br>
+                <strong>Phone:</strong> ${address.phone}<br>
+            </p>
+            <h4 style=\"font-size: 18px; margin-top: 30px;\">Shipping Address</h4>
+            <p style=\"margin: 0; line-height: 1.6; color: #555;\">
+                ${address.street}<br>
+                ${address.city}, ${address.state} ${address.zipcode}<br>
+                ${address.country}
+            </p>
+        </div>
+    `;
+    return getEmailTemplate(subject, message, preheader);
+};
+
+// ADMIN: Stock alert email (styled, with product image, name, size, and stock info)
+export const getStockAlertEmail = (product, size, stock, type = 'low') => {
+    const subject = type === 'out' ? `Out of Stock: ${product.name} (Size: ${size})` : `Low Stock: ${product.name} (Size: ${size})`;
+    const preheader = type === 'out' ? `Product ${product.name} (Size: ${size}) is now out of stock.` : `Product ${product.name} (Size: ${size}) is low on stock.`;
+    const message = `
+        <div style=\"font-size: 16px; color: #333; line-height: 1.6;\">
+            <h3 style=\"font-size: 22px; font-weight: 600; margin: 0 0 15px;\">${type === 'out' ? 'Out of Stock Alert' : 'Low Stock Warning'}</h3>
+            <div style=\"display: flex; align-items: center; margin-bottom: 20px;\">
+                <img src=\"${product.image[0]}\" alt=\"${product.name}\" style=\"width: 80px; height: 80px; object-fit: cover; border-radius: 10px; margin-right: 20px; border: 1px solid #eee;\">
+                <div>
+                    <strong style=\"font-size: 18px; display: block; margin-bottom: 4px;\">${product.name}</strong>
+                    <span style=\"font-size: 15px; color: #666;\">Size: ${size}</span>
+                </div>
+            </div>
+            <p style=\"font-size: 16px;\">${type === 'out' ? 'This size is now out of stock.' : `Only <strong>${stock}</strong> left in stock.`}</p>
+        </div>
+    `;
+    return getEmailTemplate(subject, message, preheader);
+};

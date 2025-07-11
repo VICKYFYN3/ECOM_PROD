@@ -41,28 +41,6 @@ const createContactMessage = async (req, res) => {
 
         await contactMessage.save();
 
-        // Send admin notification email using the same template as user
-        try {
-            const { getEmailTemplate } = await import('../utils/emailTemplates.js');
-            const adminSubject = `New Contact Message: ${subject}`;
-            const adminMessage = `
-                <div style="font-size: 16px; color: #333; line-height: 1.6;">
-                    <h3 style="font-size: 22px; font-weight: 600; margin: 0 0 15px;">New Contact Message Received</h3>
-                    <p><strong>From:</strong> ${user.name} (${user.email})</p>
-                    <p><strong>Priority:</strong> ${priority || 'Normal'}</p>
-                    <p><strong>Subject:</strong> ${subject}</p>
-                    <div style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-                        <strong>Message:</strong>
-                        <p style="margin: 10px 0 0 0;">${message}</p>
-                    </div>
-                </div>
-            `;
-            const adminHtml = getEmailTemplate(adminSubject, adminMessage);
-            await sendEmail(process.env.NOTIFY_EMAIL, adminSubject, adminHtml);
-        } catch (adminEmailError) {
-            console.error('Failed to send admin notification email:', adminEmailError);
-        }
-
         res.status(201).json({
             success: true,
             message: 'Contact message sent successfully',

@@ -3,7 +3,7 @@ import userModel from '../models/userModel.js';
 import productModel from '../models/productModel.js'; // Add this import
 import Stripe from 'stripe';
 import Paystack from "paystack";
-import { getOrderConfirmationEmail, getOrderStatusUpdateEmail } from "../utils/emailTemplates.js";
+import { getOrderConfirmationEmail, getOrderStatusUpdateEmail, getAdminOrderNotificationEmail, getStockAlertEmail } from "../utils/emailTemplates.js";
 import transporter from "../config/nodemailer.js";
 
 //global variables
@@ -64,23 +64,15 @@ const updateProductStock = async (items) => {
                     await transporter.sendMail({
                         from: `"Forever" <${process.env.EMAIL_USER}>`,
                         to: process.env.NOTIFY_EMAIL,
-                        subject: `Out of Stock: ${product.name} (Size: ${item.size})`,
-                        html: `<h2>Out of Stock Alert</h2>
-                               <p><strong>Product:</strong> ${product.name}</p>
-                               <p><strong>Size:</strong> ${item.size}</p>
-                               <img src="${product.image[0]}" alt="${product.name}" style="max-width:120px; margin:10px 0;" />
-                               <p>This size is now out of stock.</p>`
+                        subject: undefined, // will be set by getStockAlertEmail
+                        html: getStockAlertEmail(product, item.size, newSizeStock, 'out')
                     });
                 } else if (newSizeStock <= 10) {
                     await transporter.sendMail({
                         from: `"Forever" <${process.env.EMAIL_USER}>`,
                         to: process.env.NOTIFY_EMAIL,
-                        subject: `Low Stock: ${product.name} (Size: ${item.size})`,
-                        html: `<h2>Low Stock Warning</h2>
-                               <p><strong>Product:</strong> ${product.name}</p>
-                               <p><strong>Size:</strong> ${item.size}</p>
-                               <img src="${product.image[0]}" alt="${product.name}" style="max-width:120px; margin:10px 0;" />
-                               <p>Only <strong>${newSizeStock}</strong> left in stock.</p>`
+                        subject: undefined, // will be set by getStockAlertEmail
+                        html: getStockAlertEmail(product, item.size, newSizeStock, 'low')
                     });
                 }
             }
@@ -200,25 +192,12 @@ const placeOrder = async (req, res) => {
 
         // Send admin notification email
         if (process.env.NOTIFY_EMAIL) {
-            const adminSubject = 'New Order Placed';
-            const adminMessage = `
-                <h2>New Order Received</h2>
-                <p><strong>Order ID:</strong> ${newOrder._id}</p>
-                <p><strong>Customer:</strong> ${address.firstName} ${address.lastName} (${address.email})</p>
-                <p><strong>Amount:</strong> ₦${amount}</p>
-                <h3>Items:</h3>
-                <ul>
-                    ${items.map(item => `<li>${item.name} (Size: ${item.size}, Qty: ${item.quantity})</li>`).join('')}
-                </ul>
-                <h3>Shipping Address:</h3>
-                <p>${address.street}, ${address.city}, ${address.state}, ${address.country}, ${address.zipcode}</p>
-                <p>Phone: ${address.phone}</p>
-            `;
+            const adminHtml = getAdminOrderNotificationEmail(newOrder);
             await transporter.sendMail({
                 from: `"Forever" <${process.env.EMAIL_USER}>`,
                 to: process.env.NOTIFY_EMAIL,
-                subject: adminSubject,
-                html: adminMessage
+                subject: undefined, // will be set by getAdminOrderNotificationEmail
+                html: adminHtml
             });
         }
 
@@ -307,11 +286,12 @@ const verifyStripe = async (req, res) => {
             });
             // Send admin notification email
             if (process.env.NOTIFY_EMAIL) {
+                const adminHtml = getAdminOrderNotificationEmail(order);
                 await transporter.sendMail({
                     from: `"Forever" <${process.env.EMAIL_USER}>`,
                     to: process.env.NOTIFY_EMAIL,
-                    subject: 'New Order Placed',
-                    html: emailHtml
+                    subject: undefined, // will be set by getAdminOrderNotificationEmail
+                    html: adminHtml
                 });
             }
             await userModel.findByIdAndUpdate(userId, { cartData: {} });
@@ -409,11 +389,12 @@ const verifyPaystack = async (req, res) => {
             });
             // Send admin notification email
             if (process.env.NOTIFY_EMAIL) {
+                const adminHtml = getAdminOrderNotificationEmail(order);
                 await transporter.sendMail({
                     from: `"Forever" <${process.env.EMAIL_USER}>`,
                     to: process.env.NOTIFY_EMAIL,
-                    subject: 'New Order Placed',
-                    html: emailHtml
+                    subject: undefined, // will be set by getAdminOrderNotificationEmail
+                    html: adminHtml
                 });
             }
             await userModel.findByIdAndUpdate(order.userId, { cartData: {} });

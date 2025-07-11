@@ -18,6 +18,7 @@ const List = () => {
     const [editingProduct, setEditingProduct] = useState(null) // Track which product is being edited
     const [editModalOpen, setEditModalOpen] = useState(false)
     const [editLoading, setEditLoading] = useState(false)
+    const [searchTerm, setSearchTerm] = useState("");
 
     // Edit form state
     const [editForm, setEditForm] = useState({
@@ -288,6 +289,16 @@ const List = () => {
         fetchList()
     }, [])
 
+    // Filtered list based on search
+    const filteredList = list.filter(item => {
+        const term = searchTerm.toLowerCase();
+        return (
+            item.name.toLowerCase().includes(term) ||
+            item.category.toLowerCase().includes(term) ||
+            (item.subCategory && item.subCategory.toLowerCase().includes(term))
+        );
+    });
+
     if (loading) {
         return (
             <div className="flex items-center justify-center py-12">
@@ -302,7 +313,14 @@ const List = () => {
             {/* Header */}
             <div className="px-6 py-4 border-b border-gray-200">
                 <h2 className="text-xl font-semibold text-gray-800">All Products</h2>
-                <p className="text-sm text-gray-600 mt-1">{list.length} products found</p>
+                <p className="text-sm text-gray-600 mt-1">{filteredList.length} products found</p>
+                <input
+                    type="text"
+                    placeholder="Search by name, category, or subcategory..."
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    className="mt-3 w-full md:w-1/2 px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
             </div>
 
             {/* Desktop Table View */}
@@ -332,7 +350,7 @@ const List = () => {
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {list.map((item, index) => (
+                            {filteredList.map((item, index) => (
                                 <tr key={index} className="hover:bg-gray-50 transition-colors duration-150">
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="flex-shrink-0 h-16 w-16">
@@ -441,7 +459,7 @@ const List = () => {
             {/* Compact Mobile Card View */}
             <div className="md:hidden">
                 <div className="divide-y divide-gray-100">
-                    {list.map((item, index) => (
+                    {filteredList.map((item, index) => (
                         <div key={index} className="p-3 bg-white">
                             {/* Top Row: Image, Name, Action Buttons */}
                             <div className="flex items-start space-x-3 mb-2">

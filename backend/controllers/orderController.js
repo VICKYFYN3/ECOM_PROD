@@ -58,6 +58,33 @@ const updateProductStock = async (items) => {
             // Update total stock quantity
             await productModel.findByIdAndUpdate(item._id, { stockQuantity: totalStock });
 
+            // Send low stock or out of stock email to admin
+            if (process.env.NOTIFY_EMAIL) {
+                if (newSizeStock === 0) {
+                    await transporter.sendMail({
+                        from: `"Forever" <${process.env.EMAIL_USER}>`,
+                        to: process.env.NOTIFY_EMAIL,
+                        subject: `Out of Stock: ${product.name} (Size: ${item.size})`,
+                        html: `<h2>Out of Stock Alert</h2>
+                               <p><strong>Product:</strong> ${product.name}</p>
+                               <p><strong>Size:</strong> ${item.size}</p>
+                               <img src="${product.image[0]}" alt="${product.name}" style="max-width:120px; margin:10px 0;" />
+                               <p>This size is now out of stock.</p>`
+                    });
+                } else if (newSizeStock <= 10) {
+                    await transporter.sendMail({
+                        from: `"Forever" <${process.env.EMAIL_USER}>`,
+                        to: process.env.NOTIFY_EMAIL,
+                        subject: `Low Stock: ${product.name} (Size: ${item.size})`,
+                        html: `<h2>Low Stock Warning</h2>
+                               <p><strong>Product:</strong> ${product.name}</p>
+                               <p><strong>Size:</strong> ${item.size}</p>
+                               <img src="${product.image[0]}" alt="${product.name}" style="max-width:120px; margin:10px 0;" />
+                               <p>Only <strong>${newSizeStock}</strong> left in stock.</p>`
+                    });
+                }
+            }
+
             console.log(`Stock updated for product ${item.name} (${item.size}): ${currentSizeStock} -> ${newSizeStock}, Total: ${totalStock}`);
         }
     } catch (error) {
@@ -171,6 +198,30 @@ const placeOrder = async (req, res) => {
             html: emailHtml
         });
 
+        // Send admin notification email
+        if (process.env.NOTIFY_EMAIL) {
+            const adminSubject = 'New Order Placed';
+            const adminMessage = `
+                <h2>New Order Received</h2>
+                <p><strong>Order ID:</strong> ${newOrder._id}</p>
+                <p><strong>Customer:</strong> ${address.firstName} ${address.lastName} (${address.email})</p>
+                <p><strong>Amount:</strong> ₦${amount}</p>
+                <h3>Items:</h3>
+                <ul>
+                    ${items.map(item => `<li>${item.name} (Size: ${item.size}, Qty: ${item.quantity})</li>`).join('')}
+                </ul>
+                <h3>Shipping Address:</h3>
+                <p>${address.street}, ${address.city}, ${address.state}, ${address.country}, ${address.zipcode}</p>
+                <p>Phone: ${address.phone}</p>
+            `;
+            await transporter.sendMail({
+                from: `"Forever" <${process.env.EMAIL_USER}>`,
+                to: process.env.NOTIFY_EMAIL,
+                subject: adminSubject,
+                html: adminMessage
+            });
+        }
+
         res.json({ success: true, message: "Order Placed" });
 
     } catch (error) {
@@ -254,6 +305,15 @@ const verifyStripe = async (req, res) => {
                 subject: subject,
                 html: emailHtml
             });
+            // Send admin notification email
+            if (process.env.NOTIFY_EMAIL) {
+                await transporter.sendMail({
+                    from: `"Forever" <${process.env.EMAIL_USER}>`,
+                    to: process.env.NOTIFY_EMAIL,
+                    subject: 'New Order Placed',
+                    html: emailHtml
+                });
+            }
             await userModel.findByIdAndUpdate(userId, { cartData: {} });
             res.json({ success: true });
         } else {
@@ -293,6 +353,17 @@ const placeOrderPaystack = async (req, res) => {
 
         const newOrder = new orderModel(orderData);
         await newOrder.save();
+
+        // Send admin notification email
+        if (process.env.NOTIFY_EMAIL) {
+            const emailHtml = getOrderConfirmationEmail(newOrder);
+            await transporter.sendMail({
+                from: `"Forever" <${process.env.EMAIL_USER}>`,
+                to: process.env.NOTIFY_EMAIL,
+                subject: 'New Order Placed',
+                html: emailHtml
+            });
+        }
 
         // Create Paystack transaction
         const transaction = await paystack.transaction.initialize({
@@ -336,6 +407,15 @@ const verifyPaystack = async (req, res) => {
                 subject: subject,
                 html: emailHtml
             });
+            // Send admin notification email
+            if (process.env.NOTIFY_EMAIL) {
+                await transporter.sendMail({
+                    from: `"Forever" <${process.env.EMAIL_USER}>`,
+                    to: process.env.NOTIFY_EMAIL,
+                    subject: 'New Order Placed',
+                    html: emailHtml
+                });
+            }
             await userModel.findByIdAndUpdate(order.userId, { cartData: {} });
             res.json({ success: true });
         } else {

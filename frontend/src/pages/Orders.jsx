@@ -167,7 +167,7 @@ const Orders = () => {
                       <div className='mt-2 space-y-1'>
                         <div className='flex items-center justify-between'>
                           <span className='text-lg font-semibold text-gray-900'>
-                            {currency}{item.price}
+                            {currency}{Number(item.price).toLocaleString()}
                           </span>
                           <span className='text-sm text-gray-500'>
                             Qty: {item.quantity}

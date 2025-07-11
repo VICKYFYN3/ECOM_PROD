@@ -156,7 +156,7 @@ const Cart = () => {
                     <span className="md:hidden text-gray-500">Price:</span>
                     <div className="flex items-center gap-4">
                       <span className="font-medium">
-                        {currency}{(productData?.price * item.quantity).toFixed(2)}
+                        {currency}{(productData?.price * item.quantity).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                       </span>
                       <button
                         className="text-gray-400 hover:text-red-500 hidden md:block cursor-pointer"

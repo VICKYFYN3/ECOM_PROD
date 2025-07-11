@@ -24,19 +24,19 @@ const CartTotal = ({
             <h3 className="font-medium mb-4">Order Summary</h3>
             <div className="flex justify-between mb-2">
                 <span className="text-gray-600">Subtotal</span>
-                <span>{currency}{subtotal.toFixed(2)}</span>
+                <span>{currency}{subtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
             </div>
             <div className="flex justify-between mb-2">
                 <span className="text-gray-600">Shipping Fee</span>
                 {showShippingFee && shippingFee !== null ? (
-                    <span>{currency}{shippingFee.toFixed(2)}</span>
+                    <span>{currency}{shippingFee.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                 ) : (
                     <span>Calculated at checkout</span>
                 )}
             </div>
             <div className="border-t border-gray-200 mt-4 pt-4 flex justify-between font-medium">
                 <span>Total</span>
-                <span>{currency}{total.toFixed(2)}</span>
+                <span>{currency}{total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
             </div>
             {showCheckoutButton && (
                 <button

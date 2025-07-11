@@ -37,7 +37,7 @@ const ProductItem = ({ id, image, name, price,stockQuantity, currency = "₦" })
                     <div className='flex items-center justify-between'>
                         <p className='text-lg font-bold text-gray-900'>
                             <span className='text-sm font-medium text-gray-500'>{currency}</span>
-                            {price}
+                            {Number(price).toLocaleString()}
                         </p>
 
                         {/* Optional: Add to cart icon or wishlist */}

@@ -565,7 +565,7 @@ const PlaceOrder = () => {
                         <span className="text-sm text-gray-500">×{item.quantity}</span>
                       </div>
                       <p className="text-sm font-medium text-gray-900 mt-1">
-                        {currency}{(item.price * item.quantity).toFixed(2)}
+                        {currency}{(item.price * item.quantity).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                       </p>
                     </div>
                   </div>
@@ -577,15 +577,15 @@ const PlaceOrder = () => {
             <div className="border-t border-gray-200 pt-6 space-y-3">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Subtotal</span>
-                <span className="font-medium">{currency}{subtotal.toFixed(2)}</span>
+                <span className="font-medium">{currency}{subtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Delivery Fee</span>
-                <span className="font-medium">{currency}{delivery_fee.toFixed(2)}</span>
+                <span className="font-medium">{currency}{delivery_fee.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
               <div className="flex justify-between text-lg font-bold border-t pt-3">
                 <span>Total</span>
-                <span>{currency}{(subtotal + delivery_fee).toFixed(2)}</span>
+                <span>{currency}{(subtotal + delivery_fee).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
             </div>
 
@@ -653,7 +653,7 @@ const PlaceOrder = () => {
                     <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    Place Order • {currency}{(subtotal + delivery_fee).toFixed(2)}
+                    Place Order • {currency}{(subtotal + delivery_fee).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                   </span>
                 )}
               </button>

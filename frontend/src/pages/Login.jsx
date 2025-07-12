@@ -25,7 +25,9 @@ const Login = () => {
   const [resetToken, setResetToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
-  const [resetStep, setResetStep] = useState('email'); // 'email' or 'token'
+  const [resetStep, setResetStep] = useState('email'); // 'email', 'code', 'password'
+  const [resetTimer, setResetTimer] = useState(0); // seconds
+  const [resetCode, setResetCode] = useState(''); // for code input
   const [verificationEmail, setVerificationEmail] = useState('');
   const [verificationStep, setVerificationStep] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
@@ -108,9 +110,9 @@ const Login = () => {
     }
   };
 
+  // Modified handleForgotPassword to move to code step and start timer
   const handleForgotPassword = async () => {
     if (isForgotPasswordLoading) return; // Prevent multiple clicks
-    
     try {
       if (!forgotPasswordEmail) {
         toast.error("Please enter your email");
@@ -122,7 +124,8 @@ const Login = () => {
       });
       if (response.data.success) {
         toast.success("Reset code sent to your email!");
-        setResetStep('token');
+        setResetStep('code');
+        setResetTimer(60); // 1 minute
       } else {
         toast.error(response.data.message);
       }
@@ -137,7 +140,7 @@ const Login = () => {
     if (isResetPasswordLoading) return; // Prevent multiple clicks
     
     try {
-      if (!newPassword || !resetToken) {
+      if (!newPassword || !resetCode) {
         toast.error("Please enter the reset code and new password");
         return;
       }
@@ -147,12 +150,12 @@ const Login = () => {
       }
       setIsResetPasswordLoading(true);
       const response = await axios.post(backendURL + '/api/user/reset-password', {
-        token: resetToken,
+        token: resetCode,
         newPassword
       });
       if (response.data.success) {
         toast.success("Password reset successful! You can now login.");
-        setResetToken('');
+        setResetCode('');
         setNewPassword('');
         setForgotPasswordEmail('');
         setResetStep('email');
@@ -172,6 +175,17 @@ const Login = () => {
     setNewPassword('');
     setForgotPasswordEmail('');
     setResetStep('email');
+  };
+
+  // Add this helper to reset forgot password state
+  const resetForgotPasswordState = () => {
+    setForgotPasswordEmail('');
+    setResetCode('');
+    setNewPassword('');
+    setResetStep('email');
+    setIsForgotPasswordLoading(false);
+    setIsResetPasswordLoading(false);
+    setResetTimer(0);
   };
 
   // Verification code submit handler
@@ -222,6 +236,19 @@ const Login = () => {
     }
   };
 
+  // New handler for verifying reset code
+  const handleVerifyResetCode = () => {
+    if (!resetCode) {
+      toast.error('Please enter the reset code');
+      return;
+    }
+    if (resetTimer <= 0) {
+      toast.error('Reset code expired. Please request a new one.');
+      return;
+    }
+    setResetStep('password');
+  };
+
   // Timer effect for resend
   useEffect(() => {
     let timer;
@@ -233,11 +260,92 @@ const Login = () => {
     return () => clearInterval(timer);
   }, [verificationStep, resendTimer]);
 
+  // Timer effect for reset code
+  useEffect(() => {
+    let timer;
+    if (currentState === 'Forgot Password' && resetStep === 'code' && resetTimer > 0) {
+      timer = setInterval(() => {
+        setResetTimer((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [currentState, resetStep, resetTimer]);
+
+  // Helper to format timer as mm:ss
+  const formatTimer = (seconds) => {
+    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const s = (seconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
   useEffect(() => {
     if (token) {
       navigate('/');
     }
   }, [token]);
+
+  // Add OTP input state for 6 digits
+  const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
+  const otpInputs = [];
+
+  // Update resetCode when otpDigits change
+  useEffect(() => {
+    setResetCode(otpDigits.join(''));
+  }, [otpDigits]);
+
+  // Handler for OTP input
+  const handleOtpChange = (e, idx) => {
+    const value = e.target.value.replace(/\D/g, '');
+    if (!value) return;
+    const newDigits = [...otpDigits];
+    newDigits[idx] = value[0];
+    setOtpDigits(newDigits);
+    // Move to next input
+    if (idx < 5 && value) {
+      const next = document.getElementById(`otp-input-${idx + 1}`);
+      if (next) next.focus();
+    }
+  };
+  const handleOtpKeyDown = (e, idx) => {
+    if (e.key === 'Backspace') {
+      if (otpDigits[idx]) {
+        const newDigits = [...otpDigits];
+        newDigits[idx] = '';
+        setOtpDigits(newDigits);
+      } else if (idx > 0) {
+        const prev = document.getElementById(`otp-input-${idx - 1}`);
+        if (prev) prev.focus();
+      }
+    }
+  };
+  const handleOtpPaste = (e) => {
+    const paste = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (paste.length) {
+      setOtpDigits(paste.split('').concat(Array(6 - paste.length).fill('')));
+    }
+    e.preventDefault();
+  };
+
+  // Enhanced OTP input style with animation, filled, placeholder, responsive, and accessibility
+  const getOtpBoxClass = (digit, idx, isFocused) => [
+    'w-12 sm:w-14 h-12 sm:h-16 text-center text-2xl sm:text-3xl font-bold border rounded-xl mx-1 sm:mx-1.5 transition-all duration-200 outline-none',
+    'bg-gray-50 border-gray-300 shadow-sm',
+    isFocused ? 'border-blue-500 ring-2 ring-blue-200 ring-inset shadow-lg animate-otp-focus' : '',
+    digit ? 'bg-green-50 border-green-400 text-green-700' : '',
+    !digit ? 'placeholder-otp-underscore' : '',
+    'focus:bg-white',
+    'focus:shadow-lg',
+    'otp-digit-box',
+  ].join(' ');
+
+  // Track which OTP input is focused
+  const [otpFocusIdx, setOtpFocusIdx] = useState(0);
+
+  // Add shake animation class (for future error feedback)
+  const [otpShake, setOtpShake] = useState(false);
+
+  // Add keyframes for focus and shake animation
+  // (This will be injected into a <style> tag below)
 
   return (
     <div className='flex flex-col items-center w-[90%] sm:max-w-96 m-auto mt-14 gap-4 text-gray-800'>
@@ -298,6 +406,156 @@ const Login = () => {
               ← Back to Sign Up
             </button>
           </div>
+        </div>
+      ) : currentState === 'Forgot Password' ? (
+        <div className='w-full'>
+          <div className='inline-flex items-center gap-2 mb-2 mt-10'>
+            <p className='prata-regular text-3xl'>Forgot Password</p>
+            <hr className='border-none h-[1.5px] w-8 bg-gray-800'/>
+          </div>
+          {resetStep === 'email' && (
+            <>
+              <div className='mb-4'>
+                <p className='text-sm text-gray-700 mb-2'>Enter your email to receive a password reset code.</p>
+                <input
+                  type='email'
+                  value={forgotPasswordEmail}
+                  onChange={e => setForgotPasswordEmail(e.target.value)}
+                  className='w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-black transition-colors'
+                  placeholder='Email'
+                  required
+                  disabled={isForgotPasswordLoading}
+                />
+              </div>
+              <button
+                onClick={handleForgotPassword}
+                disabled={isForgotPasswordLoading}
+                className='bg-black text-white font-light px-8 py-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer w-full disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2'
+              >
+                {isForgotPasswordLoading && <Loader2 size={18} className="animate-spin" />}
+                {isForgotPasswordLoading ? 'Sending...' : 'Send Reset Code'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setCurrentState('Login'); resetForgotPasswordState(); }}
+                className='text-sm text-gray-600 hover:text-black transition-colors w-full text-center mt-4'
+              >
+                ← Back to Login
+              </button>
+            </>
+          )}
+          {resetStep === 'code' && (
+            <>
+              <div className='mb-4'>
+                <p className='text-sm text-gray-700 mb-2'>Enter the reset code sent to your email.</p>
+                <div className={`flex gap-3 justify-center mb-2 ${otpShake ? 'otp-shake' : ''}`} onPaste={handleOtpPaste}>
+                  {otpDigits.map((digit, idx) => (
+                    <input
+                      key={idx}
+                      id={`otp-input-${idx}`}
+                      type='text'
+                      inputMode='numeric'
+                      maxLength={1}
+                      value={digit}
+                      onChange={e => handleOtpChange(e, idx)}
+                      onKeyDown={e => handleOtpKeyDown(e, idx)}
+                      onFocus={() => setOtpFocusIdx(idx)}
+                      disabled={resetTimer <= 0}
+                      className={getOtpBoxClass(digit, idx, otpFocusIdx === idx)}
+                      style={{letterSpacing: '2px'}}
+                      aria-label={`Reset code digit ${idx + 1}`}
+                      placeholder={digit ? '' : '_'}
+                    />
+                  ))}
+                </div>
+                <div className='flex items-center justify-between mt-2'>
+                  <span className='text-xs text-gray-500'>Expires in: <span className={resetTimer <= 60 ? 'text-red-500' : ''}>{formatTimer(resetTimer)}</span></span>
+                  {resetTimer <= 0 && <span className='text-xs text-red-500'>Code expired</span>}
+                </div>
+              </div>
+              <button
+                onClick={handleVerifyResetCode}
+                disabled={resetTimer <= 0}
+                className='bg-black text-white font-light px-8 py-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer w-full disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2'
+              >
+                Verify Code
+              </button>
+              {resetTimer <= 0 && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setIsForgotPasswordLoading(true);
+                    try {
+                      const response = await axios.post(backendURL + '/api/user/forgot-password', { email: forgotPasswordEmail });
+                      if (response.data.success) {
+                        toast.success("A new reset code has been sent to your email!");
+                        setResetTimer(60);
+                        setOtpDigits(Array(6).fill('')); // Reset OTP inputs
+                      } else {
+                        toast.error(response.data.message);
+                      }
+                    } catch (error) {
+                      toast.error(error.response?.data?.message || error.message);
+                    } finally {
+                      setIsForgotPasswordLoading(false);
+                    }
+                  }}
+                  disabled={isForgotPasswordLoading}
+                  className='bg-blue-600 text-white font-light px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors cursor-pointer w-full mt-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2'
+                >
+                  {isForgotPasswordLoading ? 'Resending...' : 'Resend Code'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => { setResetStep('email'); setResetTimer(0); setOtpDigits(Array(6).fill('')); }}
+                className='text-sm text-gray-600 hover:text-black transition-colors w-full text-center mt-4'
+              >
+                ← Back
+              </button>
+            </>
+          )}
+          {resetStep === 'password' && (
+            <>
+              <div className='mb-4'>
+                <p className='text-sm text-gray-700 mb-2'>Enter your new password.</p>
+                <div className='relative'>
+                  <input
+                    type={showNewPassword ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    className='w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-black transition-colors'
+                    placeholder='New Password'
+                    required
+                    disabled={isResetPasswordLoading}
+                  />
+                  <button
+                    type="button"
+                    className='absolute right-3 top-1/2 transform -translate-y-1/2'
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    disabled={isResetPasswordLoading}
+                  >
+                    {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+              <button
+                onClick={handleResetPassword}
+                disabled={isResetPasswordLoading}
+                className='bg-black text-white font-light px-8 py-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer w-full disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2'
+              >
+                {isResetPasswordLoading && <Loader2 size={18} className="animate-spin" />}
+                {isResetPasswordLoading ? 'Resetting...' : 'Reset Password'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setResetStep('email'); resetForgotPasswordState(); }}
+                className='text-sm text-gray-600 hover:text-black transition-colors w-full text-center mt-4'
+              >
+                ← Back to Login
+              </button>
+            </>
+          )}
         </div>
       ) : (
         <form onSubmit={onSubmitHandler} className='w-full'>
@@ -377,7 +635,7 @@ const Login = () => {
           <div className='w-full flex justify-between text-sm mt-[-8px] mb-4'>
             <p
               className='cursor-pointer font-bold text-base text-blue-600 hover:underline hover:text-blue-800 transition-colors duration-150'
-              onClick={() => setForgotPasswordEmail(' ')}
+              onClick={() => { setCurrentState('Forgot Password'); resetForgotPasswordState(); }}
             >
               Forgot your Password?
             </p>
@@ -429,6 +687,35 @@ const Login = () => {
           </GoogleOAuthProvider>
         </form>
       )}
+      {/* Add custom styles for animation and placeholder */}
+      <style>{`
+        .otp-digit-box::placeholder, .placeholder-otp-underscore::placeholder {
+          color: #cbd5e1;
+          opacity: 1;
+          font-size: 2rem;
+          font-weight: 400;
+          letter-spacing: 2px;
+          text-align: center;
+        }
+        @media (max-width: 640px) {
+          .otp-digit-box { width: 3rem !important; height: 3rem !important; font-size: 1.5rem !important; }
+        }
+        @keyframes otp-focus {
+          0% { box-shadow: 0 0 0 0 #3b82f6; }
+          100% { box-shadow: 0 0 0 4px #3b82f633; }
+        }
+        .animate-otp-focus {
+          animation: otp-focus 0.2s;
+        }
+        @keyframes otp-shake {
+          0%, 100% { transform: translateX(0); }
+          20%, 60% { transform: translateX(-6px); }
+          40%, 80% { transform: translateX(6px); }
+        }
+        .otp-shake {
+          animation: otp-shake 0.4s;
+        }
+      `}</style>
     </div>
   )
 }

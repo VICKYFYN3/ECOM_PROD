@@ -63,7 +63,7 @@ const forgotPassword = async (req, res) => {
 
         // Generate 6-digit reset token
         const resetToken = generateResetToken();
-        const tokenExpiry = new Date(Date.now() + 3600000); // 1 hour from now
+        const tokenExpiry = new Date(Date.now() + 60000); // 60 seconds from now
 
         // Store token and expiry in user document
         user.resetToken = resetToken;
@@ -124,7 +124,7 @@ const forgotPassword = async (req, res) => {
                                 <div style="background: white; border-radius: 10px; padding: 20px; margin: 15px 0;">
                                     <span style="font-size: 36px; font-weight: bold; color: #333; letter-spacing: 8px; font-family: 'Courier New', monospace;">${resetToken}</span>
                                 </div>
-                                <p style="color: white; margin: 10px 0 0 0; font-size: 12px; opacity: 0.9;">Valid for 1 hour</p>
+                                <p style="color: white; margin: 10px 0 0 0; font-size: 12px; opacity: 0.9;">Valid for 60 seconds</p>
                             </div>
 
                             <!-- Instructions -->

@@ -3,6 +3,10 @@ import { v2 as cloudinary } from 'cloudinary';
 import productModel from '../models/productModel.js';
 
 const addProduct = async (req, res) => {
+    // Check for Multer file size error
+    if (req.fileSizeError) {
+        return res.status(400).json({ success: false, message: "One or more images are too large. Maximum allowed size is 2MB per image." });
+    }
     try {
         const { name, description, price, category, subCategory, sizes, bestseller, sizeStocks } = req.body;
         const image1 = req.files.image1 && req.files.image1[0]

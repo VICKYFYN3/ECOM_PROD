@@ -448,6 +448,10 @@ const getProfile = async (req, res) => {
 };
 
 const updateProfile = async (req, res) => {
+    // Check for Multer file size error
+    if (req.fileSizeError) {
+        return res.status(400).json({ success: false, message: "Profile image is too large. Maximum allowed size is 2MB." });
+    }
     try {
         const { fullName, phoneNumber } = req.body;
         const profilePictureFile = req.file; // Single file upload
@@ -587,6 +591,10 @@ const sendNewsletter = async (req, res) => {
 
 // upload newsletter image
 const uploadNewsletterImage = async (req, res) => {
+    // Check for Multer file size error
+    if (req.fileSizeError) {
+        return res.status(400).json({ success: false, message: "Newsletter image is too large. Maximum allowed size is 2MB." });
+    }
     try {
         if (!req.file) {
             return res.status(400).json({ success: false, message: 'No image file provided' });

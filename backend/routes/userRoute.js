@@ -39,7 +39,20 @@ userRouter.post('/login', loginUser);
 userRouter.post('/admin', adminLogin);
 userRouter.post('/subscribe', authUser, subscribeToNewsletter);
 userRouter.post('/profile/get', authUser, getProfile);
-userRouter.post('/profile/update', upload.single('profilePicture'), authUser, updateProfile);
+
+// Middleware to catch Multer file size errors
+function multerFileSizeErrorHandler(err, req, res, next) {
+    if (err && err.code === 'LIMIT_FILE_SIZE') {
+        req.fileSizeError = true;
+        // Call next so controller can handle the error and return a custom message
+        return next();
+    }
+    // If it's another error, pass it along
+    if (err) return next(err);
+    next();
+}
+
+userRouter.post('/profile/update', upload.single('profilePicture'), multerFileSizeErrorHandler, authUser, updateProfile);
 userRouter.post('/profile/change-password', authUser, changePassword);
 userRouter.post('/deactivate', authUser, deactivateAccount);
 
@@ -55,7 +68,7 @@ userRouter.get('/wishlist', authUser, getWishlist);
 
 // Admin newsletter routes
 userRouter.post('/newsletter/send', adminAuth, sendNewsletter);
-userRouter.post('/upload/newsletter-image', upload.single('image'), adminAuth, uploadNewsletterImage);
+userRouter.post('/upload/newsletter-image', upload.single('image'), multerFileSizeErrorHandler, adminAuth, uploadNewsletterImage);
 userRouter.get('/subscribers/count', adminAuth, getSubscribersCount);
 
 export default userRouter;

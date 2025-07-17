@@ -573,7 +573,6 @@ const sendNewsletter = async (req, res) => {
                     html: newsletterHtml,
                 };
                 await transporter.sendMail(mailOptions);
-                console.log(`Newsletter sent to ${user.email}`);
             } catch (error) {
                 console.error(`Failed to send newsletter to ${user.email}:`, error);
             }
@@ -593,8 +592,6 @@ const uploadNewsletterImage = async (req, res) => {
             return res.status(400).json({ success: false, message: 'No image file provided' });
         }
 
-        console.log('File received:', req.file);
-
         // Check if cloudinary is configured
         if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
             console.error('Cloudinary configuration missing');
@@ -609,8 +606,6 @@ const uploadNewsletterImage = async (req, res) => {
             resource_type: 'image',
             folder: 'newsletter-images'
         });
-
-        console.log('Cloudinary upload result:', result);
 
         res.json({ 
             success: true, 
@@ -725,6 +720,63 @@ const createSession = async (userId, token, req) => {
     return session;
 };
 
+// Add product to wishlist
+const addToWishlist = async (req, res) => {
+    try {
+        const userId = req.body.userId;
+        const { productId } = req.params;
+        if (!productId) {
+            return res.status(400).json({ success: false, message: 'Product ID is required' });
+        }
+        const user = await userModel.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        if (user.wishlist.includes(productId)) {
+            return res.status(400).json({ success: false, message: 'Product already in wishlist' });
+        }
+        user.wishlist.push(productId);
+        await user.save();
+        return res.json({ success: true, message: 'Product added to wishlist' });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// Remove product from wishlist
+const removeFromWishlist = async (req, res) => {
+    try {
+        const userId = req.body.userId;
+        const { productId } = req.params;
+        if (!productId) {
+            return res.status(400).json({ success: false, message: 'Product ID is required' });
+        }
+        const user = await userModel.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        user.wishlist = user.wishlist.filter(id => id.toString() !== productId);
+        await user.save();
+        return res.json({ success: true, message: 'Product removed from wishlist' });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// Get user's wishlist (populated)
+const getWishlist = async (req, res) => {
+    try {
+        const userId = req.body.userId;
+        const user = await userModel.findById(userId).populate('wishlist');
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        return res.json({ success: true, wishlist: user.wishlist });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 export { 
     loginUser, 
     registerUser, 
@@ -745,5 +797,8 @@ export {
     signOutDevice,
     createSession,
     verifyEmail,
-    resendVerificationCode
+    resendVerificationCode,
+    addToWishlist,
+    removeFromWishlist,
+    getWishlist
 };

@@ -9,6 +9,7 @@ import Reviews from '../components/profile/Reviews';
 import AccountSettings from '../components/profile/AccountSettings';
 import Orders from './../pages/Orders';
 import ContactMessages from '../components/profile/ContactMessages';
+import Wishlist from '../components/profile/Wishlist';
 import { toast } from 'sonner';
 import axios from 'axios';
 
@@ -29,6 +30,7 @@ const UserProfile = () => {
         { id: 'orders', label: 'Orders', icon: assets.orders_icon },
         { id: 'addresses', label: 'Addresses', icon: assets.address_icon },
         { id: 'cart', label: 'Cart', icon: assets.cart_icon },
+        { id: 'wishlist', label: 'Wishlist', icon: assets.wish }, // Add icon if available
         { id: 'reviews', label: 'Reviews', icon: assets.review_icon },
         { id: 'contact-messages', label: 'Contact Messages', icon: assets.email_icon },
         { id: 'settings', label: 'Account Settings', icon: assets.settings_icon }
@@ -105,6 +107,8 @@ const UserProfile = () => {
                 return <Addresses />;
             case 'cart':
                 return <Cart />;
+            case 'wishlist':
+                return <Wishlist />;
             case 'reviews':
                 return <Reviews />;
             case 'contact-messages':

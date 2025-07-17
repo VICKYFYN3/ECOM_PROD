@@ -96,15 +96,12 @@ const deleteReview = async (req, res) => {
 
 const getReviewableProducts = async (req, res) => {
     try {
-        console.log('Getting reviewable products for user:', req.body.userId);
         
         // First, let's check all orders for this user
         const allOrders = await orderModel.find({ userId: req.body.userId });
-        console.log('Total orders for user:', allOrders.length);
         
         // Log all order statuses
         allOrders.forEach(order => {
-            console.log('Order ID:', order._id, 'Status:', order.status, 'Items:', order.items.length);
         });
         
         const orders = await orderModel.find({
@@ -112,14 +109,10 @@ const getReviewableProducts = async (req, res) => {
             status: 'Delivered'
         });
 
-        console.log('Found delivered orders:', orders.length);
-
         // Get all product IDs that the user has already reviewed
         const reviewedProducts = await reviewModel.find({
             userId: req.body.userId
         }).distinct('productId');
-
-        console.log('Already reviewed products:', reviewedProducts.length);
 
         // Convert to strings for comparison
         const reviewedProductIds = reviewedProducts.map(id => id.toString());
@@ -127,12 +120,9 @@ const getReviewableProducts = async (req, res) => {
         const reviewableProducts = [];
         
         orders.forEach(order => {
-            console.log('Processing order:', order._id, 'with', order.items.length, 'items');
             order.items.forEach(item => {
                 // The item contains the product's _id, not its own _id
                 const productId = item._id;
-                
-                console.log('Checking item:', item.name, 'with productId:', productId);
                 
                 // Make sure item has a product ID and hasn't been reviewed
                 if (productId && !reviewedProductIds.includes(productId.toString())) {
@@ -148,22 +138,16 @@ const getReviewableProducts = async (req, res) => {
                             image: item.image,
                             createdAt: order.createdAt
                         });
-                        console.log('Added reviewable product:', item.name);
                     }
-                } else {
-                    console.log('Skipping item:', item.name, '- already reviewed or no productId');
                 }
             });
         });
-
-        console.log('Final reviewable products:', reviewableProducts.length);
 
         res.json({
             success: true,
             products: reviewableProducts
         });
     } catch (error) {
-        console.error('Error in getReviewableProducts:', error);
         res.json({ success: false, message: error.message });
     }
 };

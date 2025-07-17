@@ -179,7 +179,6 @@ const updateContactStatus = async (req, res) => {
                 `;
 
                 await sendEmail(message.email, emailSubject, emailBody);
-                console.log('Email notification sent to customer:', message.email);
             } catch (emailError) {
                 console.error('Failed to send email notification:', emailError);
                 // Don't fail the whole request if email fails

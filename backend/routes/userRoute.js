@@ -18,7 +18,10 @@ import {
     signOutAllDevices,
     signOutDevice,
     verifyEmail,
-    resendVerificationCode
+    resendVerificationCode,
+    addToWishlist,
+    removeFromWishlist,
+    getWishlist
 } from '../controllers/userController.js';
 import authUser from './../middleware/auth.js';
 import upload from '../middleware/multer.js';
@@ -44,6 +47,11 @@ userRouter.post('/deactivate', authUser, deactivateAccount);
 userRouter.post('/sessions/get', authUser, getUserSessions);
 userRouter.post('/sessions/signout-all', authUser, signOutAllDevices);
 userRouter.post('/sessions/signout-device', authUser, signOutDevice);
+
+// Wishlist routes
+userRouter.post('/wishlist/:productId', authUser, addToWishlist);
+userRouter.delete('/wishlist/:productId', authUser, removeFromWishlist);
+userRouter.get('/wishlist', authUser, getWishlist);
 
 // Admin newsletter routes
 userRouter.post('/newsletter/send', adminAuth, sendNewsletter);

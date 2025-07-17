@@ -48,7 +48,6 @@ async function seedProducts() {
   });
 
   await productModel.insertMany(products);
-  console.log(`${NUM_PRODUCTS} products seeded!`);
   mongoose.connection.close();
 }
 

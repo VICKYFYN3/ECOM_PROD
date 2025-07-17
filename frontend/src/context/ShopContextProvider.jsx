@@ -29,6 +29,7 @@ const ShopContextProvider = (props) => {
     const [cartItems, setCartItems] = useState({});
     const [token, setToken] = useState('');
     const [profileData, setProfileData] = useState(null);
+    const [wishlist, setWishlist] = useState([]);
 
     // Add to cart function
     const addToCart = async(itemId, size) => {
@@ -173,6 +174,57 @@ const ShopContextProvider = (props) => {
         }
     };
 
+    // Fetch wishlist from backend
+    const fetchWishlist = async (token) => {
+        if (!token) return setWishlist([]);
+        try {
+            const response = await axios.get(backendURL + '/api/user/wishlist', { headers: { token } });
+            if (response.data.success) {
+                setWishlist(response.data.wishlist || []);
+            } else {
+                setWishlist([]);
+            }
+        } catch (error) {
+            setWishlist([]);
+        }
+    };
+    // Add product to wishlist
+    const addToWishlist = async (productId) => {
+        if (!token) {
+            toast.error('Login to use wishlist');
+            return;
+        }
+        try {
+            const response = await axios.post(backendURL + `/api/user/wishlist/${productId}`, {}, { headers: { token } });
+            if (response.data.success) {
+                toast.success('Added to wishlist');
+                fetchWishlist(token);
+            } else {
+                toast.error(response.data.message || 'Failed to add to wishlist');
+            }
+        } catch (error) {
+            toast.error('Failed to add to wishlist');
+        }
+    };
+    // Remove product from wishlist
+    const removeFromWishlist = async (productId) => {
+        if (!token) {
+            toast.error('Login to use wishlist');
+            return;
+        }
+        try {
+            const response = await axios.delete(backendURL + `/api/user/wishlist/${productId}`, { headers: { token } });
+            if (response.data.success) {
+                toast.info('Removed from wishlist');
+                fetchWishlist(token);
+            } else {
+                toast.error(response.data.message || 'Failed to remove from wishlist');
+            }
+        } catch (error) {
+            toast.error('Failed to remove from wishlist');
+        }
+    };
+
     useEffect(() => {
         getProductsData();
     }, []);
@@ -187,9 +239,11 @@ const ShopContextProvider = (props) => {
         if(token){
             getUserCart(token);
             getProfileData(token);
+            fetchWishlist(token);
         } else {
             setCartItems({});
             setProfileData(null);
+            setWishlist([]);
         }
     }, [token]);
 
@@ -256,6 +310,10 @@ const ShopContextProvider = (props) => {
         setToken,
         token,
         profileData,
+        wishlist,
+        fetchWishlist,
+        addToWishlist,
+        removeFromWishlist,
     }
     
     return (

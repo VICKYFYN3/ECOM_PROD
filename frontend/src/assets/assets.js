@@ -30,6 +30,7 @@ import camera_icon from './camera_icon.png'
 import settings_icon from './settings_icon.png'
 import whatsapp_icon from './whatsapp_icon.png'
 import email_icon from './email_icon.png'
+import wish from './wish.png'
 
 
 export const assets = {
@@ -64,5 +65,6 @@ export const assets = {
     camera_icon,
     settings_icon,
     email_icon,
-    whatsapp_icon
+    whatsapp_icon,
+    wish
 }

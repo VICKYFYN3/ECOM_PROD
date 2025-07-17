@@ -13,7 +13,8 @@ const userSchema = new mongoose.Schema({
     isVerified: { type: Boolean, default: false },
     verificationCodeResendAt: { type: Date },
     profilePicture: String,
-    phoneNumber: String
+    phoneNumber: String,
+    wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'product' }]
 },{minimize: false});
 
 const userModel = mongoose.models.user || mongoose.model('User', userSchema);

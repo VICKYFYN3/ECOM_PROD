@@ -76,8 +76,6 @@ const updateProductStock = async (items) => {
                     });
                 }
             }
-
-            console.log(`Stock updated for product ${item.name} (${item.size}): ${currentSizeStock} -> ${newSizeStock}, Total: ${totalStock}`);
         }
     } catch (error) {
         console.error('Error updating stock:', error);
@@ -128,8 +126,6 @@ const restoreProductStock = async (items) => {
 
             // Update total stock quantity
             await productModel.findByIdAndUpdate(item._id, { stockQuantity: totalStock });
-
-            console.log(`Stock restored for product ${item.name} (${item.size}): ${currentSizeStock} -> ${restoredSizeStock}, Total: ${totalStock}`);
         }
     } catch (error) {
         console.error('Error restoring stock:', error);

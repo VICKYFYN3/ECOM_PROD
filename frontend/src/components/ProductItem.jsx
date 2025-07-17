@@ -1,7 +1,24 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { Link } from 'react-router-dom';
+import { ShopContext } from '../context/ShopContext';
 
-const ProductItem = ({ id, image, name, price,stockQuantity, currency = "₦" }) => {
+const ProductItem = ({ id, image, name, price, stockQuantity, currency = "₦" }) => {
+    const { wishlist, addToWishlist, removeFromWishlist, token } = useContext(ShopContext);
+    const isInWishlist = wishlist && wishlist.some(item => (item._id || item.id) === id);
+
+    const handleWishlistClick = (e) => {
+        e.preventDefault(); // Prevent Link navigation
+        if (!token) {
+            addToWishlist(id); // Will show login toast
+            return;
+        }
+        if (isInWishlist) {
+            removeFromWishlist(id);
+        } else {
+            addToWishlist(id);
+        }
+    };
+
     return (
         <Link to={`/product/${id}`} className='group block relative'>
             {stockQuantity === 0 && (
@@ -39,15 +56,24 @@ const ProductItem = ({ id, image, name, price,stockQuantity, currency = "₦" })
                             <span className='text-sm font-medium text-gray-500'>{currency}</span>
                             {Number(price).toLocaleString()}
                         </p>
-
-                        {/* Optional: Add to cart icon or wishlist */}
-                        <div className='opacity-0 group-hover:opacity-100 transition-opacity duration-300'>
-                            <div className='w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors'>
-                                <svg className='w-4 h-4 text-gray-600' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                                    <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M12 6v6m0 0v6m0-6h6m-6 0H6' />
+                        {/* Wishlist Button */}
+                        <button
+                            className='ml-2 p-1 rounded-full hover:bg-pink-100 transition-colors'
+                            onClick={handleWishlistClick}
+                            aria-label={isInWishlist ? 'Remove from wishlist' : 'Add to wishlist'}
+                        >
+                            {isInWishlist ? (
+                                // Filled heart
+                                <svg className='w-6 h-6 text-pink-500' fill='currentColor' viewBox='0 0 20 20'>
+                                    <path d='M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z' />
                                 </svg>
-                            </div>
-                        </div>
+                            ) : (
+                                // Outline heart
+                                <svg className='w-6 h-6 text-gray-400 hover:text-pink-500' fill='none' stroke='currentColor' strokeWidth='2' viewBox='0 0 24 24'>
+                                    <path strokeLinecap='round' strokeLinejoin='round' d='M4.318 6.318a4.5 4.5 0 016.364 0L12 7.636l1.318-1.318a4.5 4.5 0 116.364 6.364L12 20.364l-7.682-7.682a4.5 4.5 0 010-6.364z' />
+                                </svg>
+                            )}
+                        </button>
                     </div>
                 </div>
             </div>

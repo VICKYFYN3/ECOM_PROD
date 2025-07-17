@@ -29,10 +29,6 @@ app.use('/api/review',reviewRouter)
 app.use('/api/address',addressRouter)
 app.use('/api/contact',contactRouter)
 
-// Test endpoint to verify contact routes are loaded
-app.get('/api/contact/test', (req, res) => {
-    res.json({ success: true, message: 'Contact routes are working!' });
-});
 
 app.get('/',(req,res)=>{
     res.send("API is running");

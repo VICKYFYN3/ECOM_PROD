@@ -4,7 +4,10 @@ import { ShopContext } from '../context/ShopContext';
 
 const ProductItem = ({ id, image, name, price, stockQuantity, currency = "₦" }) => {
     const { wishlist, addToWishlist, removeFromWishlist, token } = useContext(ShopContext);
-    const isInWishlist = wishlist && wishlist.some(item => (item._id || item.id) === id);
+    const isInWishlist = wishlist && wishlist.some(item => {
+        if (typeof item === 'string') return item === id;
+        return (item._id || item.id) === id;
+    });
 
     const handleWishlistClick = (e) => {
         e.preventDefault(); // Prevent Link navigation

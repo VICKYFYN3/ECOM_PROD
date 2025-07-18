@@ -51,7 +51,10 @@ const Product = () => {
     return sizeStock <= 0;
   }) || productData?.stockQuantity <= 0;
 
-  const isInWishlist = wishlist && wishlist.some(item => (item._id || item.id) === productId);
+  const isInWishlist = wishlist && wishlist.some(item => {
+    if (typeof item === 'string') return item === productId;
+    return (item._id || item.id) === productId;
+  });
   const handleWishlistClick = (e) => {
     e.preventDefault();
     if (!token) {

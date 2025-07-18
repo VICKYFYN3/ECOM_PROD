@@ -19,6 +19,12 @@ function mergeCarts(cartA, cartB) {
     return merged;
 }
 
+// Utility to merge two wishlists (array of product IDs)
+function mergeWishlists(wishlistA, wishlistB) {
+    const set = new Set([...(wishlistA || []), ...(wishlistB || [])]);
+    return Array.from(set);
+}
+
 const ShopContextProvider = (props) => {
     const currency = '₦';
     const delivery_fee = 3000;
@@ -174,9 +180,14 @@ const ShopContextProvider = (props) => {
         }
     };
 
-    // Fetch wishlist from backend
+    // Fetch wishlist from backend or localStorage for guests
     const fetchWishlist = async (token) => {
-        if (!token) return setWishlist([]);
+        if (!token) {
+            // Guest: load from localStorage
+            const guestWishlist = localStorage.getItem('guest_wishlist');
+            setWishlist(guestWishlist ? JSON.parse(guestWishlist) : []);
+            return;
+        }
         try {
             const response = await axios.get(backendURL + '/api/user/wishlist', { headers: { token } });
             if (response.data.success) {
@@ -188,10 +199,21 @@ const ShopContextProvider = (props) => {
             setWishlist([]);
         }
     };
-    // Add product to wishlist
+
+    // Add product to wishlist (supports guest and logged-in)
     const addToWishlist = async (productId) => {
         if (!token) {
-            toast.error('Login to use wishlist');
+            // Guest: update localStorage
+            let guestWishlist = localStorage.getItem('guest_wishlist');
+            guestWishlist = guestWishlist ? JSON.parse(guestWishlist) : [];
+            if (!guestWishlist.includes(productId)) {
+                const updated = [...guestWishlist, productId];
+                localStorage.setItem('guest_wishlist', JSON.stringify(updated));
+                setWishlist(updated);
+                toast.success('Added to wishlist');
+            } else {
+                toast.info('Already in wishlist');
+            }
             return;
         }
         try {
@@ -206,10 +228,20 @@ const ShopContextProvider = (props) => {
             toast.error('Failed to add to wishlist');
         }
     };
-    // Remove product from wishlist
+    // Remove product from wishlist (supports guest and logged-in)
     const removeFromWishlist = async (productId) => {
         if (!token) {
-            toast.error('Login to use wishlist');
+            // Guest: update localStorage
+            let guestWishlist = localStorage.getItem('guest_wishlist');
+            guestWishlist = guestWishlist ? JSON.parse(guestWishlist) : [];
+            if (guestWishlist.includes(productId)) {
+                const updated = guestWishlist.filter(id => id !== productId);
+                localStorage.setItem('guest_wishlist', JSON.stringify(updated));
+                setWishlist(updated);
+                toast.info('Removed from wishlist');
+            } else {
+                toast.info('Not in wishlist');
+            }
             return;
         }
         try {
@@ -247,48 +279,73 @@ const ShopContextProvider = (props) => {
         }
     }, [token]);
 
-    // Persist guest cart to localStorage when not logged in
-    useEffect(() => {
-        if (!token) {
-            localStorage.setItem('guest_cart', JSON.stringify(cartItems));
-        }
-    }, [cartItems, token]);
-
-    // On mount, load guest cart if not logged in
+    // On mount, load guest cart and guest wishlist if not logged in
     useEffect(() => {
         if (!token) {
             const guestCart = localStorage.getItem('guest_cart');
             if (guestCart) {
                 setCartItems(JSON.parse(guestCart));
             }
+            const guestWishlist = localStorage.getItem('guest_wishlist');
+            setWishlist(guestWishlist ? JSON.parse(guestWishlist) : []);
         }
     }, [token]);
 
-    // On login, merge guest cart with backend cart, update backend, and clear guest cart
+    // Persist guest cart and wishlist to localStorage when not logged in
     useEffect(() => {
-        const mergeAndSyncCart = async () => {
+        if (!token) {
+            localStorage.setItem('guest_cart', JSON.stringify(cartItems));
+            localStorage.setItem('guest_wishlist', JSON.stringify(wishlist));
+        }
+    }, [cartItems, wishlist, token]);
+
+    // On login, merge guest cart and guest wishlist with backend, update backend, and clear guest data
+    useEffect(() => {
+        const mergeAndSyncCartAndWishlist = async () => {
             const guestCart = localStorage.getItem('guest_cart');
-            if (token && guestCart) {
-                try {
-                    // Get backend cart
-                    const response = await axios.post(backendURL + '/api/cart/get', {}, { headers: { token } });
-                    let backendCart = response.data.success ? response.data.cartData : {};
-                    // Merge
-                    const mergedCart = mergeCarts(backendCart, JSON.parse(guestCart));
-                    // Update backend for each item/size in mergedCart
-                    for (const itemId in mergedCart) {
-                        for (const size in mergedCart[itemId]) {
-                            await axios.post(backendURL + '/api/cart/update', { itemId, size, quantity: mergedCart[itemId][size] }, { headers: { token } });
+            const guestWishlist = localStorage.getItem('guest_wishlist');
+            if (token) {
+                // --- Cart merge (existing logic) ---
+                if (guestCart) {
+                    try {
+                        const response = await axios.post(backendURL + '/api/cart/get', {}, { headers: { token } });
+                        let backendCart = response.data.success ? response.data.cartData : {};
+                        const mergedCart = mergeCarts(backendCart, JSON.parse(guestCart));
+                        for (const itemId in mergedCart) {
+                            for (const size in mergedCart[itemId]) {
+                                await axios.post(backendURL + '/api/cart/update', { itemId, size, quantity: mergedCart[itemId][size] }, { headers: { token } });
+                            }
                         }
+                        setCartItems(mergedCart);
+                        localStorage.removeItem('guest_cart');
+                    } catch (error) {
+                        toast.error('Failed to merge guest cart');
                     }
-                    setCartItems(mergedCart);
-                    localStorage.removeItem('guest_cart');
-                } catch (error) {
-                    toast.error('Failed to merge guest cart');
+                }
+                // --- Wishlist merge ---
+                if (guestWishlist) {
+                    try {
+                        // Fetch backend wishlist
+                        const response = await axios.get(backendURL + '/api/user/wishlist', { headers: { token } });
+                        let backendWishlist = response.data.success ? response.data.wishlist || [] : [];
+                        const guestWishlistArr = JSON.parse(guestWishlist);
+                        // Merge (by productId)
+                        const mergedWishlist = mergeWishlists(backendWishlist.map(p => p._id || p), guestWishlistArr);
+                        // Add missing items to backend
+                        for (const productId of mergedWishlist) {
+                            if (!backendWishlist.some(p => (p._id || p) === productId)) {
+                                await axios.post(backendURL + `/api/user/wishlist/${productId}`, {}, { headers: { token } });
+                            }
+                        }
+                        fetchWishlist(token);
+                        localStorage.removeItem('guest_wishlist');
+                    } catch (error) {
+                        toast.error('Failed to merge guest wishlist');
+                    }
                 }
             }
         };
-        mergeAndSyncCart();
+        mergeAndSyncCartAndWishlist();
     }, [token]);
 
     const value = {

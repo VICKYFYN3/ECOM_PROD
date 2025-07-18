@@ -22,3 +22,6 @@ a.active hr {
     color: white;
   }
 }
+:focus:not(:focus-visible) {
+  outline: none;
+}

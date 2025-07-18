@@ -47,8 +47,7 @@ const Navbar = () => {
                 {/* Logo with hover effect */}
                 <Link to="/">
                     <div className="relative group">
-                        <img src={assets.logo} className='w-36 relative z-10' alt="" />
-                        <div className="absolute -bottom-1 -left-2 -right-2 h-3 bg-yellow-200 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300 z-0"></div>
+                        <img src={assets.logo} className='w-36 relative z-10 transition-transform duration-300 group-hover:scale-110' alt="" />
                     </div>
                 </Link>
 

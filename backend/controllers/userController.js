@@ -81,23 +81,23 @@ const forgotPassword = async (req, res) => {
 
         // Enhanced email template
         const mailOptions = {
-            from: `"Forever" <${process.env.EMAIL_USER}>`,
+            from: `"FYN3" <${process.env.EMAIL_USER}>`,
             to: email,
-            subject: 'Password Reset Code - Forever',
+            subject: 'Password Reset Code - FYN3',
             html: `
                 <!DOCTYPE html>
                 <html>
                 <head>
                     <meta charset="utf-8">
                     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>Password Reset - Forever</title>
+                    <title>Password Reset - FYN3</title>
                 </head>
                 <body style="margin: 0; padding: 0; font-family: 'Arial', sans-serif; background-color: #f8f9fa;">
                     <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
                         <!-- Header -->
                         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 20px; text-align: center;">
                             <div style="background-color: white; display: inline-block; padding: 20px; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.1);">
-                                <img src="https://res.cloudinary.com/duvxwhiho/image/upload/v1749069069/logo_vl94iv.png" alt="Forever Logo" style="max-width: 120px; height: auto;">
+                                <img src="https://res.cloudinary.com/duvxwhiho/image/upload/v1752842991/logo_fid9j1.png" alt="FYN3 Logo" style="max-width: 120px; height: auto;">
                             </div>
                             <h2 style="color: white; margin: 0; font-size: 24px; font-weight: 300;">Password Reset Request</h2>
                         </div>
@@ -148,7 +148,7 @@ const forgotPassword = async (req, res) => {
                             <div style="text-align: center; margin-top: 30px;">
                                 <p style="color: #666; font-size: 14px; margin: 0;">
                                     Need help? Contact our support team at 
-                                    <a href="mailto:support@forever.com" style="color: #667eea; text-decoration: none;">support@forever.com</a>
+                                    <a href="mailto:support@FYN3.com" style="color: #667eea; text-decoration: none;">support@FYN3.com</a>
                                 </p>
                             </div>
                         </div>
@@ -156,8 +156,8 @@ const forgotPassword = async (req, res) => {
                         <!-- Footer -->
                         <div style="background-color: #2c3e50; padding: 30px; text-align: center;">
                             <div style="margin-bottom: 20px;">
-                                <img src="https://res.cloudinary.com/duvxwhiho/image/upload/v1749069069/logo_vl94iv.png" alt="Forever Logo" style="max-width: 80px; height: auto; margin-bottom: 10px; filter: brightness(0) invert(1);">
-                                <p style="color: #95a5a6; margin: 5px 0 0 0; font-size: 12px;">Making fashion accessible forever</p>
+                                <img src="https://res.cloudinary.com/duvxwhiho/image/upload/v1752842991/logo_fid9j1.png" alt="FYN3 Logo" style="max-width: 80px; height: auto; margin-bottom: 10px; filter: brightness(0) invert(1);">
+                                <p style="color: #95a5a6; margin: 5px 0 0 0; font-size: 12px;">Making fashion accessible FYN3</p>
                             </div>
                             
                             <div style="margin: 20px 0;">
@@ -175,7 +175,7 @@ const forgotPassword = async (req, res) => {
                             <hr style="border: none; border-top: 1px solid #34495e; margin: 20px 0;">
                             
                             <p style="color: #95a5a6; font-size: 12px; margin: 0; line-height: 1.5;">
-                                © ${new Date().getFullYear()} Forever. All rights reserved.<br>
+                                © ${new Date().getFullYear()} FYN3. All rights reserved.<br>
                                 This email was sent to ${email}
                             </p>
                         </div>
@@ -307,7 +307,7 @@ const registerUser = async (req, res) => {
         await newUser.save();
 
         // Send verification email
-        const subject = 'Verify Your Email - Forever';
+        const subject = 'Verify Your Email - FYN3';
         const message = `<div style="text-align:center;">
             <h2>Welcome, ${name}!</h2>
             <p>Thank you for signing up. Please verify your email address using the code below:</p>
@@ -316,7 +316,7 @@ const registerUser = async (req, res) => {
         </div>`;
         const html = getEmailTemplate(subject, message);
         await transporter.sendMail({
-            from: `"Forever" <${process.env.EMAIL_USER}>`,
+            from: `"FYN3" <${process.env.EMAIL_USER}>`,
             to: email,
             subject,
             html
@@ -389,7 +389,7 @@ const resendVerificationCode = async (req, res) => {
         await user.save();
 
         // Send verification email
-        const subject = 'Verify Your Email - Forever';
+        const subject = 'Verify Your Email - FYN3';
         const message = `<div style="text-align:center;">
             <h2>Hello, ${user.name}!</h2>
             <p>Your new verification code is:</p>
@@ -398,7 +398,7 @@ const resendVerificationCode = async (req, res) => {
         </div>`;
         const html = getEmailTemplate(subject, message);
         await transporter.sendMail({
-            from: `"Forever" <${process.env.EMAIL_USER}>`,
+            from: `"FYN3" <${process.env.EMAIL_USER}>`,
             to: email,
             subject,
             html
@@ -571,7 +571,7 @@ const sendNewsletter = async (req, res) => {
         for (const user of subscribedUsers) {
             try {
                 const mailOptions = {
-                    from: `"Forever" <${process.env.EMAIL_USER}>`,
+                    from: `"FYN3" <${process.env.EMAIL_USER}>`,
                     to: user.email,
                     subject: subject,
                     html: newsletterHtml,

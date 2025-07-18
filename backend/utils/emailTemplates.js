@@ -21,7 +21,7 @@ export const getEmailTemplate = (subject, message, preheader = '', imageUrl = ''
                 <!-- Header -->
                 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 20px; text-align: center;">
                     <a href="http://your-store.com" target="_blank">
-                        <img src="https://res.cloudinary.com/duvxwhiho/image/upload/v1749069069/logo_vl94iv.png" alt="Forever Logo" style="max-width: 100px; border-radius: 5px; height: auto; background-color: white; padding: 20px;">
+                        <img src="https://res.cloudinary.com/duvxwhiho/image/upload/v1752842991/logo_fid9j1.png" alt="FYN3 Logo" style="max-width: 100px; border-radius: 5px; height: auto; background-color: white; padding: 20px;">
                     </a>
                     <h2 style="color: white; margin: 20px 0 0; font-size: 28px; font-weight: 600; letter-spacing: 0.5px;">${subject}</h2>
                 </div>
@@ -41,8 +41,8 @@ export const getEmailTemplate = (subject, message, preheader = '', imageUrl = ''
                 <!-- Footer -->
                 <div style="background-color: #2c3e50; padding: 30px; text-align: center;">
                     <div style="margin-bottom: 20px;">
-                        <img src="https://res.cloudinary.com/duvxwhiho/image/upload/v1749069069/logo_vl94iv.png" alt="Forever Logo" style="max-width: 80px; height: auto; margin-bottom: 10px; filter: brightness(0) invert(1);">
-                        <p style="color: #95a5a6; margin: 5px 0 0 0; font-size: 12px;">Making fashion accessible forever</p>
+                        <img src="https://res.cloudinary.com/duvxwhiho/image/upload/v1752842991/logo_fid9j1.png" alt="FYN3 Logo" style="max-width: 80px; height: auto; margin-bottom: 10px; filter: brightness(0) invert(1);">
+                        <p style="color: #95a5a6; margin: 5px 0 0 0; font-size: 12px;">Making fashion accessible FYN3</p>
                     </div>
                     
                     <div style="margin: 20px 0;">
@@ -60,7 +60,7 @@ export const getEmailTemplate = (subject, message, preheader = '', imageUrl = ''
                     <hr style="border: none; border-top: 1px solid #34495e; margin: 20px 0;">
                     
                     <p style="color: #95a5a6; font-size: 12px; margin: 0; line-height: 1.5;">
-                        © ${new Date().getFullYear()} Forever. All rights reserved.<br>
+                        © ${new Date().getFullYear()} FYN3. All rights reserved.<br>
                         123 Fashion Ave, Style City, 45678
                     </p>
                 </div>

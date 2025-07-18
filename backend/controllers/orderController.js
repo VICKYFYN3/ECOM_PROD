@@ -62,14 +62,14 @@ const updateProductStock = async (items) => {
             if (process.env.NOTIFY_EMAIL) {
                 if (newSizeStock === 0) {
                     await transporter.sendMail({
-                        from: `"Forever" <${process.env.EMAIL_USER}>`,
+                        from: `"FYN3" <${process.env.EMAIL_USER}>`,
                         to: process.env.NOTIFY_EMAIL,
                         subject: undefined, // will be set by getStockAlertEmail
                         html: getStockAlertEmail(product, item.size, newSizeStock, 'out')
                     });
                 } else if (newSizeStock <= 10) {
                     await transporter.sendMail({
-                        from: `"Forever" <${process.env.EMAIL_USER}>`,
+                        from: `"FYN3" <${process.env.EMAIL_USER}>`,
                         to: process.env.NOTIFY_EMAIL,
                         subject: undefined, // will be set by getStockAlertEmail
                         html: getStockAlertEmail(product, item.size, newSizeStock, 'low')
@@ -180,7 +180,7 @@ const placeOrder = async (req, res) => {
         const emailHtml = getOrderConfirmationEmail(newOrder);
         const subject = `Your Order is Confirmed!`;
         await transporter.sendMail({
-            from: `"Forever" <${process.env.EMAIL_USER}>`,
+            from: `"FYN3" <${process.env.EMAIL_USER}>`,
             to: address.email,
             subject: subject,
             html: emailHtml
@@ -190,7 +190,7 @@ const placeOrder = async (req, res) => {
         if (process.env.NOTIFY_EMAIL) {
             const adminHtml = getAdminOrderNotificationEmail(newOrder);
             await transporter.sendMail({
-                from: `"Forever" <${process.env.EMAIL_USER}>`,
+                from: `"FYN3" <${process.env.EMAIL_USER}>`,
                 to: process.env.NOTIFY_EMAIL,
                 subject: undefined, // will be set by getAdminOrderNotificationEmail
                 html: adminHtml
@@ -275,7 +275,7 @@ const verifyStripe = async (req, res) => {
             const emailHtml = getOrderConfirmationEmail(order);
             const subject = `Your Order is Confirmed!`;
             await transporter.sendMail({
-                from: `"Forever" <${process.env.EMAIL_USER}>`,
+                from: `"FYN3" <${process.env.EMAIL_USER}>`,
                 to: order.address.email,
                 subject: subject,
                 html: emailHtml
@@ -284,7 +284,7 @@ const verifyStripe = async (req, res) => {
             if (process.env.NOTIFY_EMAIL) {
                 const adminHtml = getAdminOrderNotificationEmail(order);
                 await transporter.sendMail({
-                    from: `"Forever" <${process.env.EMAIL_USER}>`,
+                    from: `"FYN3" <${process.env.EMAIL_USER}>`,
                     to: process.env.NOTIFY_EMAIL,
                     subject: undefined, // will be set by getAdminOrderNotificationEmail
                     html: adminHtml
@@ -334,7 +334,7 @@ const placeOrderPaystack = async (req, res) => {
         if (process.env.NOTIFY_EMAIL) {
             const adminHtml = getAdminOrderNotificationEmail(newOrder);
             await transporter.sendMail({
-                from: `"Forever" <${process.env.EMAIL_USER}>`,
+                from: `"FYN3" <${process.env.EMAIL_USER}>`,
                 to: process.env.NOTIFY_EMAIL,
                 subject: undefined, // will be set by getAdminOrderNotificationEmail
                 html: adminHtml
@@ -378,7 +378,7 @@ const verifyPaystack = async (req, res) => {
             const emailHtml = getOrderConfirmationEmail(order);
             const subject = `Your Order is Confirmed!`;
             await transporter.sendMail({
-                from: `"Forever" <${process.env.EMAIL_USER}>`,
+                from: `"FYN3" <${process.env.EMAIL_USER}>`,
                 to: order.address.email,
                 subject: subject,
                 html: emailHtml
@@ -387,7 +387,7 @@ const verifyPaystack = async (req, res) => {
             if (process.env.NOTIFY_EMAIL) {
                 const adminHtml = getAdminOrderNotificationEmail(order);
                 await transporter.sendMail({
-                    from: `"Forever" <${process.env.EMAIL_USER}>`,
+                    from: `"FYN3" <${process.env.EMAIL_USER}>`,
                     to: process.env.NOTIFY_EMAIL,
                     subject: undefined, // will be set by getAdminOrderNotificationEmail
                     html: adminHtml
@@ -443,7 +443,7 @@ const updateStatus = async (req, res) => {
             const emailHtml = getOrderStatusUpdateEmail(order);
             if (emailHtml) {
                 const mailOptions = {
-                    from: `"Forever" <${process.env.EMAIL_USER}>`,
+                    from: `"FYN3" <${process.env.EMAIL_USER}>`,
                     to: order.address.email,
                     subject: `Your Order Status: ${status}`,
                     html: emailHtml

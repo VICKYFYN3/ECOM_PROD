@@ -17,11 +17,13 @@ import Verify from './pages/Verify'
 import VerifyPaystack from './pages/VerifyPaystack';
 import UserProfile from './pages/UserProfile';
 import ScrollToTop from "./components/ScrollToTop";
+import WhatsappFAB from "./components/WhatsappFAB";
 
 function App() {
   return (
     <>
       <ScrollToTop />
+      <WhatsappFAB />
       <div className='px-4 sm:px-[5vw] md:px-[7vw] lg:px-[4vw]'>
         <Toaster closeButton richColors position='top-right' />
         <Navbar />

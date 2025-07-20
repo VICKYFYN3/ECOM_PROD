@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import {Routes,Route, BrowserRouter} from 'react-router-dom'
 import Home from './pages/Home'
 import Orders from './pages/Orders'
@@ -20,10 +20,86 @@ import ScrollToTop from "./components/ScrollToTop";
 import WhatsappFAB from "./components/WhatsappFAB";
 
 function App() {
+  // PWA install prompt logic
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+
+  useEffect(() => {
+    // Only show if not already shown this session
+    if (!sessionStorage.getItem('pwaInstallPromptShown')) {
+      const handler = (e) => {
+        e.preventDefault();
+        setDeferredPrompt(e);
+        setShowInstallBanner(true);
+        sessionStorage.setItem('pwaInstallPromptShown', 'true');
+      };
+      window.addEventListener('beforeinstallprompt', handler);
+      return () => window.removeEventListener('beforeinstallprompt', handler);
+    }
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      setShowInstallBanner(false);
+      setDeferredPrompt(null);
+    }
+  };
+
+  const handleDismiss = () => {
+    setShowInstallBanner(false);
+    // Already set in sessionStorage
+  };
+
   return (
     <>
       <ScrollToTop />
       <WhatsappFAB />
+      {/* PWA Install Banner */}
+      {showInstallBanner && (
+        <div style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          background: '#222',
+          color: '#fff',
+          padding: '1em',
+          textAlign: 'center',
+          zIndex: 1000
+        }}>
+          <span>Install our app for a better experience!</span>
+          <button
+            style={{
+              marginLeft: '1em',
+              padding: '0.5em 1em',
+              background: '#4f46e5',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+            onClick={handleInstallClick}
+          >
+            Install
+          </button>
+          <button
+            style={{
+              marginLeft: '1em',
+              padding: '0.5em 1em',
+              background: '#888',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+            onClick={handleDismiss}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <div className='px-4 sm:px-[5vw] md:px-[7vw] lg:px-[4vw]'>
         <Toaster closeButton richColors position='top-right' />
         <Navbar />

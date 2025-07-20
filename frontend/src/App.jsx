@@ -60,44 +60,83 @@ function App() {
       {showInstallBanner && (
         <div style={{
           position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          background: '#222',
+          left: '50%',
+          bottom: '2rem',
+          transform: 'translateX(-50%)',
+          background: 'linear-gradient(90deg, #4f46e5 0%, #6366f1 100%)',
           color: '#fff',
-          padding: '1em',
-          textAlign: 'center',
-          zIndex: 1000
+          padding: '1.5em 2em',
+          borderRadius: '1.5em',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+          display: 'flex',
+          alignItems: 'center',
+          zIndex: 1000,
+          animation: 'slideUp 0.5s'
         }}>
-          <span>Install our app for a better experience!</span>
-          <button
+          <img
+            src='/icon-192x192.png'
+            alt='App Icon'
             style={{
-              marginLeft: '1em',
-              padding: '0.5em 1em',
-              background: '#4f46e5',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
+              width: 48,
+              height: 48,
+              borderRadius: '1em',
+              marginRight: '1em',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
             }}
+          />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: '1.1em', marginBottom: 4 }}>
+              Install our app for a faster, offline experience!
+            </div>
+            <div style={{ fontSize: '0.95em', opacity: 0.85 }}>
+              Get quick access from your home screen.
+            </div>
+          </div>
+          <button
             onClick={handleInstallClick}
+            style={{
+              marginLeft: '1.5em',
+              padding: '0.7em 1.3em',
+              background: '#fff',
+              color: '#4f46e5',
+              border: 'none',
+              borderRadius: '1em',
+              fontWeight: 600,
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
+              transition: 'background 0.2s, color 0.2s'
+            }}
+            onMouseOver={e => { e.target.style.background = '#6366f1'; e.target.style.color = '#fff'; }}
+            onMouseOut={e => { e.target.style.background = '#fff'; e.target.style.color = '#4f46e5'; }}
           >
             Install
           </button>
           <button
-            style={{
-              marginLeft: '1em',
-              padding: '0.5em 1em',
-              background: '#888',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
             onClick={handleDismiss}
+            style={{
+              marginLeft: '0.7em',
+              padding: '0.7em 1.1em',
+              background: 'transparent',
+              color: '#fff',
+              border: '1.5px solid #fff',
+              borderRadius: '1em',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'background 0.2s, color 0.2s'
+            }}
+            onMouseOver={e => { e.target.style.background = '#fff'; e.target.style.color = '#4f46e5'; }}
+            onMouseOut={e => { e.target.style.background = 'transparent'; e.target.style.color = '#fff'; }}
           >
             Dismiss
           </button>
+          <style>
+            {`
+              @keyframes slideUp {
+                from { transform: translateX(-50%) translateY(100px); opacity: 0; }
+                to { transform: translateX(-50%) translateY(0); opacity: 1; }
+              }
+            `}
+          </style>
         </div>
       )}
       <div className='px-4 sm:px-[5vw] md:px-[7vw] lg:px-[4vw]'>

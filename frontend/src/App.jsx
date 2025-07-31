@@ -19,6 +19,7 @@ import UserProfile from './pages/UserProfile';
 import ScrollToTop from "./components/ScrollToTop";
 import WhatsappFAB from "./components/WhatsappFAB";
 import PwaInstallBanner from './components/PwaInstallBanner';
+import Wishlist from './pages/Wishlist';
 
 function App() {
   return (
@@ -36,6 +37,7 @@ function App() {
           <Route path='/product/:productId' element={<Product />} />
           <Route path='/orders' element={<Orders />} />
           <Route path='/cart' element={<Cart />} />
+          <Route path='/wishlist' element={<Wishlist />} />
           <Route path='/login' element={<Login />} />
           <Route path='/place-order' element={<PlaceOrder />} />
           <Route path='/about' element={<About />} />

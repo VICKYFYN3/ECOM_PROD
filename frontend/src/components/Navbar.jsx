@@ -8,7 +8,7 @@ const Navbar = () => {
     const [showMobileProfileDropdown, setShowMobileProfileDropdown] = React.useState(false)
     const location = useLocation();
 
-    const { setShowSearch, getCartCount, token, setToken, setCartItems } = useContext(ShopContext);
+    const { setShowSearch, getCartCount, token, setToken, setCartItems, getWishlistCount } = useContext(ShopContext);
     const navigate = useNavigate();
 
     // Check if current page is collection page
@@ -42,7 +42,7 @@ const Navbar = () => {
         <div className="relative z-50">
             {/* Decorative top border with gradient */}
             <div className="h-1 w-full bg-gradient-to-r from-purple-500 via-pink-500 to-yellow-500"></div>
-            
+
             <div className='flex items-center justify-between py-5 font-medium relative'>
                 {/* Logo with hover effect */}
                 <Link to="/">
@@ -85,17 +85,17 @@ const Navbar = () => {
                         <div className="absolute inset-0 rounded-full bg-pink-200 scale-0 group-hover:scale-150 opacity-0 group-hover:opacity-30 transition-all duration-500"></div>
                         <img onClick={handleProfileClick} src={assets.profile_icon} className='w-5 cursor-pointer relative' alt="" />
                         {/* Dropdown */}
-                        {token && 
-                        <div className='invisible group-hover:visible opacity-0 group-hover:opacity-100 absolute dropdown-menu right-0 pt-3 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0'>
-                            <div className='w-40 py-2 bg-white rounded-lg shadow-xl border border-gray-100 overflow-hidden'>
-                                <div className="h-1 w-full bg-gradient-to-r from-purple-500 to-pink-500 mb-2"></div>
-                                <div className='flex flex-col'>
-                                    <p onClick={()=>navigate('/profile')} className='cursor-pointer hover:bg-purple-50 py-2 px-4 text-gray-700 hover:text-purple-700 transition-colors'>My Profile</p>
-                                    <p onClick={()=>navigate('/orders')} className='cursor-pointer hover:bg-purple-50 py-2 px-4 text-gray-700 hover:text-purple-700 transition-colors'>Orders</p>
-                                    <p onClick={logout} className='cursor-pointer hover:bg-purple-50 py-2 px-4 text-gray-700 hover:text-purple-700 transition-colors'>Logout</p>
+                        {token &&
+                            <div className='invisible group-hover:visible opacity-0 group-hover:opacity-100 absolute dropdown-menu right-0 pt-3 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0'>
+                                <div className='w-40 py-2 bg-white rounded-lg shadow-xl border border-gray-100 overflow-hidden'>
+                                    <div className="h-1 w-full bg-gradient-to-r from-purple-500 to-pink-500 mb-2"></div>
+                                    <div className='flex flex-col'>
+                                        <p onClick={() => navigate('/profile')} className='cursor-pointer hover:bg-purple-50 py-2 px-4 text-gray-700 hover:text-purple-700 transition-colors'>My Profile</p>
+                                        <p onClick={() => navigate('/orders')} className='cursor-pointer hover:bg-purple-50 py-2 px-4 text-gray-700 hover:text-purple-700 transition-colors'>Orders</p>
+                                        <p onClick={logout} className='cursor-pointer hover:bg-purple-50 py-2 px-4 text-gray-700 hover:text-purple-700 transition-colors'>Logout</p>
+                                    </div>
                                 </div>
-                            </div>
-                        </div>}
+                            </div>}
                     </div>
 
                     {/* Cart with floating animation */}
@@ -103,6 +103,12 @@ const Navbar = () => {
                         <div className="absolute inset-0 rounded-full bg-yellow-200 scale-0 group-hover:scale-150 opacity-0 group-hover:opacity-30 transition-all duration-500"></div>
                         <img src={assets.cart_icon} className='w-5 min-w-5 relative' alt="" />
                         <p className='absolute right-[-5px] bottom-[-5px] w-5 h-5 flex items-center justify-center bg-gradient-to-br from-purple-600 to-pink-600 text-white rounded-full text-[10px] animate-pulse'>{getCartCount()}</p>
+                    </Link>
+                    {/* Wishlist with floating animation */}
+                    <Link to='/wishlist' className='relative cursor-pointer group'>
+                        <div className="absolute inset-0 rounded-full bg-pink-200 scale-0 group-hover:scale-150 opacity-0 group-hover:opacity-30 transition-all duration-500"></div>
+                        <img src={assets.wish} className='w-5 min-w-5 relative' alt="" />
+                        <p className='absolute right-[-5px] bottom-[-5px] w-5 h-5 flex items-center justify-center bg-gradient-to-br from-pink-600 to-purple-600 text-white rounded-full text-[10px] animate-pulse'>{getWishlistCount()}</p>
                     </Link>
 
                     {/* Mobile menu button with animation */}
@@ -121,16 +127,16 @@ const Navbar = () => {
                         <div className="h-1 w-full bg-gradient-to-r from-purple-500 via-pink-500 to-yellow-500"></div>
                         <div className="flex justify-between items-center p-4 border-b">
                             <img src={assets.logo} className="w-32" alt="" />
-                            <button 
+                            <button
                                 onClick={() => setVisible(false)}
                                 className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
                             >
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                    <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                                 </svg>
                             </button>
                         </div>
-                        
+
                         <div className="p-4">
                             <div className="space-y-3 py-4">
                                 {[
@@ -140,14 +146,13 @@ const Navbar = () => {
                                     { path: '/contact', label: 'CONTACT' },
                                     { path: '/orders', label: 'ORDERS' }
                                 ].map((item) => (
-                                    <NavLink 
+                                    <NavLink
                                         key={item.path}
                                         to={item.path}
                                         onClick={() => setVisible(false)}
-                                        className={({ isActive }) => 
-                                            `block p-3 rounded-lg ${
-                                                isActive 
-                                                ? 'bg-gradient-to-r from-purple-50 to-pink-50 border-l-4 border-purple-500 text-purple-700 font-medium' 
+                                        className={({ isActive }) =>
+                                            `block p-3 rounded-lg ${isActive
+                                                ? 'bg-gradient-to-r from-purple-50 to-pink-50 border-l-4 border-purple-500 text-purple-700 font-medium'
                                                 : 'hover:bg-gray-50 text-gray-700'
                                             }`
                                         }
@@ -156,7 +161,7 @@ const Navbar = () => {
                                     </NavLink>
                                 ))}
                             </div>
-                            
+
                             <div className="mt-8 pt-6 border-t border-gray-100">
                                 <div className="flex justify-around">
                                     <div className="flex flex-col items-center gap-1 text-xs text-gray-500 relative">
@@ -164,7 +169,7 @@ const Navbar = () => {
                                             <img src={assets.profile_icon} className="w-5" alt="" />
                                         </div>
                                         <span>Profile</span>
-                                        
+
                                         {/* Mobile Profile Dropdown */}
                                         {token && showMobileProfileDropdown && (
                                             <div className="absolute top-12 left-1/2 transform -translate-x-1/2 w-40 py-2 bg-white rounded-lg shadow-xl border border-gray-100 z-50">
@@ -187,7 +192,13 @@ const Navbar = () => {
                                         </div>
                                         <span>Search</span>
                                     </div>
-                                    
+                                    <Link to="/wishlist" className="flex flex-col items-center gap-1 text-xs text-gray-500" onClick={() => setVisible(false)}>
+                                        <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 relative">
+                                            <img src={assets.wish} className="w-5" alt="" />
+                                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-gradient-to-r from-pink-600 to-purple-600 rounded-full text-white text-[8px] flex items-center justify-center">{getWishlistCount()}</span>
+                                        </div>
+                                        <span>Wishlist</span>
+                                    </Link>
                                     <Link to="/cart" className="flex flex-col items-center gap-1 text-xs text-gray-500">
                                         <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600 relative">
                                             <img src={assets.cart_icon} className="w-5" alt="" />

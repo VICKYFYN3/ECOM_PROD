@@ -125,7 +125,10 @@ const ShopContextProvider = (props) => {
         }
         return totalCount;
     }
-    
+    // Get total wishlist count
+const getWishlistCount = () => {
+    return wishlist ? wishlist.length : 0;
+}
     // Get cart total
     const getCartTotal = () => {
         let totalAmount = 0;
@@ -371,6 +374,7 @@ const ShopContextProvider = (props) => {
         fetchWishlist,
         addToWishlist,
         removeFromWishlist,
+        getWishlistCount,
     }
     
     return (

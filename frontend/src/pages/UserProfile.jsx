@@ -9,7 +9,7 @@ import Reviews from '../components/profile/Reviews';
 import AccountSettings from '../components/profile/AccountSettings';
 import Orders from './../pages/Orders';
 import ContactMessages from '../components/profile/ContactMessages';
-import Wishlist from '../components/profile/Wishlist';
+import Wishlist from './Wishlist';
 import { toast } from 'sonner';
 import axios from 'axios';
 

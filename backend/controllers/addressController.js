@@ -1,180 +1,100 @@
 import addressModel from '../models/addressModel.js';
+import logger from '../utils/logger.js';
+import eventLogger from '../utils/eventLogger.js';
 
 const getAddresses = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const addresses = await addressModel.find({ userId: req.body.userId }).sort({ createdAt: -1 });
         res.json({ success: true, addresses });
     } catch (error) {
-        res.json({success:false, message: error.message})
+        logger.error('Get addresses failed', { requestId, error: error.message });
+        res.json({ success: false, message: error.message });
     }
 };
 
 const addAddress = async (req, res) => {
+    const requestId = req.requestId;
     try {
-        const { 
-            fullName,
-            phoneNumber,
-            email,
-            addressLine1,
-            addressLine2,
-            city,
-            state,
-            postalCode,
-            country,
-            isDefault,
-            addressType 
-        } = req.body;
-
-        // Validate required fields
+        const { fullName, phoneNumber, email, addressLine1, addressLine2, city, state, postalCode, country, isDefault, addressType } = req.body;
         if (!fullName || !phoneNumber || !addressLine1 || !email || !city || !state || !postalCode || !country) {
             return res.json({ success: false, message: 'Please fill all required fields' });
         }
-
-        // If this is being set as default, remove default from other addresses of same type
         if (isDefault) {
-            await addressModel.updateMany(
-                { userId: req.body.userId, addressType },
-                { $set: { isDefault: false } }
-            );
+            await addressModel.updateMany({ userId: req.body.userId, addressType }, { $set: { isDefault: false } });
         }
-
         const newAddress = new addressModel({
-            userId: req.body.userId,
-            fullName,
-            phoneNumber,
-            email,
-            addressLine1,
-            addressLine2: addressLine2 || '',
-            city,
-            state,
-            postalCode,
-            country,
-            isDefault: isDefault || false,
+            userId: req.body.userId, fullName, phoneNumber, email,
+            addressLine1, addressLine2: addressLine2 || '', city, state,
+            postalCode, country, isDefault: isDefault || false,
             addressType: addressType || 'shipping'
         });
-
         await newAddress.save();
+        eventLogger.user.addressAdded({ requestId, userId: req.body.userId, city, country, addressType });
         res.json({ success: true, message: 'Address added successfully', address: newAddress });
     } catch (error) {
-        res.json({success:false, message: error.message})
+        logger.error('Add address failed', { requestId, error: error.message });
+        res.json({ success: false, message: error.message });
     }
 };
 
 const updateAddress = async (req, res) => {
+    const requestId = req.requestId;
     try {
-        const { 
-            addressId,
-            fullName,
-            phoneNumber,
-            addressLine1,
-            addressLine2,
-            city,
-            state,
-            postalCode,
-            country,
-            isDefault,
-            addressType 
-        } = req.body;
-
-        // Validate required fields
-        if (!addressId) {
-            return res.json({ success: false, message: 'Address ID is required' });
-        }
-
+        const { addressId, fullName, phoneNumber, addressLine1, addressLine2, city, state, postalCode, country, isDefault, addressType } = req.body;
+        if (!addressId) return res.json({ success: false, message: 'Address ID is required' });
         if (!fullName || !phoneNumber || !addressLine1 || !city || !state || !postalCode || !country) {
             return res.json({ success: false, message: 'Please fill all required fields' });
         }
-
-        // Check if address belongs to the user
         const existingAddress = await addressModel.findOne({ _id: addressId, userId: req.body.userId });
-        if (!existingAddress) {
-            return res.json({ success: false, message: 'Address not found' });
-        }
-
-        // If this is being set as default, remove default from other addresses of same type
+        if (!existingAddress) return res.json({ success: false, message: 'Address not found' });
         if (isDefault) {
-            await addressModel.updateMany(
-                { userId: req.body.userId, addressType, _id: { $ne: addressId } },
-                { $set: { isDefault: false } }
-            );
+            await addressModel.updateMany({ userId: req.body.userId, addressType, _id: { $ne: addressId } }, { $set: { isDefault: false } });
         }
-
         const updatedAddress = await addressModel.findByIdAndUpdate(
             addressId,
-            {
-                fullName,
-                phoneNumber,
-                addressLine1,
-                addressLine2: addressLine2 || '',
-                city,
-                state,
-                postalCode,
-                country,
-                isDefault: isDefault || false,
-                addressType: addressType || 'shipping'
-            },
+            { fullName, phoneNumber, addressLine1, addressLine2: addressLine2 || '', city, state, postalCode, country, isDefault: isDefault || false, addressType: addressType || 'shipping' },
             { new: true }
         );
-
+        logger.info('Address updated', { requestId, userId: req.body.userId, addressId, city, country });
         res.json({ success: true, message: 'Address updated successfully', address: updatedAddress });
     } catch (error) {
-        res.json({success:false, message: error.message})
+        logger.error('Update address failed', { requestId, error: error.message });
+        res.json({ success: false, message: error.message });
     }
 };
 
 const deleteAddress = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const { addressId } = req.body;
-
-        if (!addressId) {
-            return res.json({ success: false, message: 'Address ID is required' });
-        }
-
-        // Check if address belongs to the user before deleting
+        if (!addressId) return res.json({ success: false, message: 'Address ID is required' });
         const address = await addressModel.findOne({ _id: addressId, userId: req.body.userId });
-        if (!address) {
-            return res.json({ success: false, message: 'Address not found' });
-        }
-
+        if (!address) return res.json({ success: false, message: 'Address not found' });
         await addressModel.findByIdAndDelete(addressId);
+        logger.info('Address deleted', { requestId, userId: req.body.userId, addressId });
         res.json({ success: true, message: 'Address deleted successfully' });
     } catch (error) {
-        res.json({success:false, message: error.message})
+        logger.error('Delete address failed', { requestId, error: error.message });
+        res.json({ success: false, message: error.message });
     }
 };
 
 const setDefaultAddress = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const { addressId, addressType } = req.body;
-
-        if (!addressId || !addressType) {
-            return res.json({ success: false, message: 'Address ID and address type are required' });
-        }
-
-        // Check if address belongs to the user
+        if (!addressId || !addressType) return res.json({ success: false, message: 'Address ID and address type are required' });
         const address = await addressModel.findOne({ _id: addressId, userId: req.body.userId });
-        if (!address) {
-            return res.json({ success: false, message: 'Address not found' });
-        }
-
-        // Remove default from all addresses of this type for this user
-        await addressModel.updateMany(
-            { userId: req.body.userId, addressType },
-            { $set: { isDefault: false } }
-        );
-
-        // Set the specified address as default
-        await addressModel.findByIdAndUpdate(
-            addressId,
-            { $set: { isDefault: true } }
-        );
-
+        if (!address) return res.json({ success: false, message: 'Address not found' });
+        await addressModel.updateMany({ userId: req.body.userId, addressType }, { $set: { isDefault: false } });
+        await addressModel.findByIdAndUpdate(addressId, { $set: { isDefault: true } });
+        logger.info('Default address set', { requestId, userId: req.body.userId, addressId, addressType });
         res.json({ success: true, message: 'Default address updated successfully' });
     } catch (error) {
-        res.json({success:false, message: error.message})
+        logger.error('Set default address failed', { requestId, error: error.message });
+        res.json({ success: false, message: error.message });
     }
 };
-
-
 
 export { getAddresses, addAddress, updateAddress, deleteAddress, setDefaultAddress };

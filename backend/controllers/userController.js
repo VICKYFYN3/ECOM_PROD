@@ -9,15 +9,28 @@ import { v2 as cloudinary } from 'cloudinary';
 import transporter from "../config/nodemailer.js";
 import { getEmailTemplate } from "../utils/emailTemplates.js";
 import { getDeviceInfo } from "../utils/deviceInfo.js";
+import eventLogger from "../utils/eventLogger.js";
+import logger from "../utils/logger.js";
+
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// Generate a random 6-digit token
 const generateResetToken = () => {
     return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
-// Google Authentication
+const createToken = (id) => {
+    return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+};
+
+const createSession = async (userId, token, req) => {
+    const deviceInfo = getDeviceInfo(req.headers['user-agent'], req.ip);
+    const session = new sessionModel({ userId, token, deviceInfo });
+    await session.save();
+    return session;
+};
+
 const googleAuth = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const { token } = req.body;
         const ticket = await client.verifyIdToken({
@@ -25,325 +38,197 @@ const googleAuth = async (req, res) => {
             audience: process.env.GOOGLE_CLIENT_ID,
         });
         const payload = ticket.getPayload();
-
-        // Check if user exists
         let user = await userModel.findOne({ email: payload.email });
-
+        const isNewUser = !user;
         if (!user) {
-            // Create new user if doesn't exist
             user = new userModel({
                 name: payload.name,
                 email: payload.email,
-                password: 'google-auth', // Dummy password
+                password: 'google-auth',
             });
             await user.save();
         }
-
         const authToken = createToken(user._id);
-        
-        // Create session for this Google login
         await createSession(user._id, authToken, req);
-        
+        eventLogger.auth.googleAuth({
+            requestId,
+            userId: user._id,
+            email: payload.email,
+            isNewUser,
+            ip: req.ip,
+        });
         res.json({ success: true, token: authToken });
-
     } catch (error) {
-        res.json({success:false, message: error.message})
+        logger.error('Google auth failed', { requestId, error: error.message, ip: req.ip });
+        res.json({ success: false, message: error.message });
     }
 };
 
-// Forgot Password
 const forgotPassword = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const { email } = req.body;
         const user = await userModel.findOne({ email });
-
         if (!user) {
+            logger.warn('Password reset requested for non-existent email', { requestId, email, ip: req.ip });
             return res.status(404).json({ success: false, message: "User not found" });
         }
-
-        // Generate 6-digit reset token
         const resetToken = generateResetToken();
-        const tokenExpiry = new Date(Date.now() + 60000); // 60 seconds from now
-
-        // Store token and expiry in user document
+        const tokenExpiry = new Date(Date.now() + 60000);
         user.resetToken = resetToken;
         user.resetTokenExpiry = tokenExpiry;
         await user.save();
-
-        // Configure nodemailer transporter
+        eventLogger.auth.passwordReset({ requestId, userId: user._id, email, ip: req.ip, stage: 'requested' });
         const transporter = nodemailer.createTransport({
             service: 'gmail',
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS,
-            },
+            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
         });
-
-        // Enhanced email template
         const mailOptions = {
             from: `"FYN3" <${process.env.EMAIL_USER}>`,
             to: email,
             subject: 'Password Reset Code - FYN3',
             html: `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="utf-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>Password Reset - FYN3</title>
-                </head>
-                <body style="margin: 0; padding: 0; font-family: 'Arial', sans-serif; background-color: #f8f9fa;">
-                    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
-                        <!-- Header -->
-                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 20px; text-align: center;">
-                            <div style="background-color: white; display: inline-block; padding: 20px; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.1);">
-                                <img src="https://res.cloudinary.com/duvxwhiho/image/upload/v1752842991/logo_fid9j1.png" alt="FYN3 Logo" style="max-width: 120px; height: auto;">
-                            </div>
-                            <h2 style="color: white; margin: 0; font-size: 24px; font-weight: 300;">Password Reset Request</h2>
-                        </div>
-
-                        <!-- Content -->
-                        <div style="padding: 40px 30px;">
-                            <div style="text-align: center; margin-bottom: 30px;">
-                                <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center;">
-                                    <svg width="40" height="40" fill="white" viewBox="0 0 24 24">
-                                        <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
-                                        <path d="M9 12l2 2 4-4" stroke="white" stroke-width="2" fill="none"/>
-                                    </svg>
-                                </div>
-                                <h3 style="color: #333; margin: 0 0 10px 0; font-size: 20px;">Security Code</h3>
-                                <p style="color: #666; margin: 0; font-size: 16px; line-height: 1.5;">
-                                    Hello <strong>${user.name}</strong>,<br>
-                                    We received a request to reset your password. Use the code below to reset your password:
-                                </p>
-                            </div>
-
-                            <!-- Reset Code -->
-                            <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 15px; padding: 30px; text-align: center; margin: 30px 0; box-shadow: 0 10px 30px rgba(240, 147, 251, 0.3);">
-                                <p style="color: white; margin: 0 0 10px 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Your Reset Code</p>
-                                <div style="background: white; border-radius: 10px; padding: 20px; margin: 15px 0;">
-                                    <span style="font-size: 36px; font-weight: bold; color: #333; letter-spacing: 8px; font-family: 'Courier New', monospace;">${resetToken}</span>
-                                </div>
-                                <p style="color: white; margin: 10px 0 0 0; font-size: 12px; opacity: 0.9;">Valid for 60 seconds</p>
-                            </div>
-
-                            <!-- Instructions -->
-                            <div style="background-color: #f8f9ff; border-left: 4px solid #667eea; padding: 20px; margin: 25px 0; border-radius: 0 8px 8px 0;">
-                                <h4 style="color: #333; margin: 0 0 10px 0; font-size: 16px;">How to reset your password:</h4>
-                                <ol style="color: #666; margin: 0; padding-left: 20px; line-height: 1.6;">
-                                    <li>Go to the password reset page on our website</li>
-                                    <li>Enter the 6-digit code above</li>
-                                    <li>Create your new password</li>
-                                    <li>You're all set!</li>
-                                </ol>
-                            </div>
-
-                            <!-- Security Notice -->
-                            <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin: 25px 0;">
-                                <p style="color: #856404; margin: 0; font-size: 14px; line-height: 1.5;">
-                                    <strong>⚠️ Security Notice:</strong> If you didn't request this password reset, please ignore this email and consider changing your password as a precaution.
-                                </p>
-                            </div>
-
-                            <div style="text-align: center; margin-top: 30px;">
-                                <p style="color: #666; font-size: 14px; margin: 0;">
-                                    Need help? Contact our support team at 
-                                    <a href="mailto:support@FYN3.com" style="color: #667eea; text-decoration: none;">support@FYN3.com</a>
-                                </p>
-                            </div>
-                        </div>
-
-                        <!-- Footer -->
-                        <div style="background-color: #2c3e50; padding: 30px; text-align: center;">
-                            <div style="margin-bottom: 20px;">
-                                <img src="https://res.cloudinary.com/duvxwhiho/image/upload/v1752842991/logo_fid9j1.png" alt="FYN3 Logo" style="max-width: 80px; height: auto; margin-bottom: 10px; filter: brightness(0) invert(1);">
-                                <p style="color: #95a5a6; margin: 5px 0 0 0; font-size: 12px;">Making fashion accessible FYN3</p>
-                            </div>
-                            
-                            <div style="margin: 20px 0;">
-                                <a href="#" style="display: inline-block; margin: 0 10px; width: 35px; height: 35px; background-color: #34495e; border-radius: 50%; text-decoration: none; line-height: 35px;">
-                                    <span style="color: white; font-size: 16px;">f</span>
-                                </a>
-                                <a href="#" style="display: inline-block; margin: 0 10px; width: 35px; height: 35px; background-color: #34495e; border-radius: 50%; text-decoration: none; line-height: 35px;">
-                                    <span style="color: white; font-size: 16px;">t</span>
-                                </a>
-                                <a href="#" style="display: inline-block; margin: 0 10px; width: 35px; height: 35px; background-color: #34495e; border-radius: 50%; text-decoration: none; line-height: 35px;">
-                                    <span style="color: white; font-size: 16px;">@</span>
-                                </a>
-                            </div>
-
-                            <hr style="border: none; border-top: 1px solid #34495e; margin: 20px 0;">
-                            
-                            <p style="color: #95a5a6; font-size: 12px; margin: 0; line-height: 1.5;">
-                                © ${new Date().getFullYear()} FYN3. All rights reserved.<br>
-                                This email was sent to ${email}
-                            </p>
-                        </div>
-                    </div>
-                </body>
-                </html>
+                <!DOCTYPE html><html><body style="margin:0;padding:0;font-family:Arial,sans-serif;background-color:#f8f9fa;">
+                <div style="max-width:600px;margin:0 auto;background-color:#ffffff;">
+                <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:40px 20px;text-align:center;">
+                <h2 style="color:white;margin:0;">Password Reset Request</h2></div>
+                <div style="padding:40px 30px;text-align:center;">
+                <h3>Security Code</h3>
+                <p>Hello <strong>${user.name}</strong>, use the code below to reset your password:</p>
+                <div style="background:linear-gradient(135deg,#f093fb 0%,#f5576c 100%);border-radius:15px;padding:30px;margin:30px 0;">
+                <div style="background:white;border-radius:10px;padding:20px;">
+                <span style="font-size:36px;font-weight:bold;letter-spacing:8px;">${resetToken}</span>
+                </div>
+                <p style="color:white;margin:10px 0 0 0;font-size:12px;">Valid for 60 seconds</p>
+                </div>
+                <p style="color:#666;">If you didn't request this, please ignore this email.</p>
+                </div></div></body></html>
             `,
         };
-
         await transporter.sendMail(mailOptions);
         res.json({ success: true, message: "Reset code sent to your email" });
-
     } catch (error) {
-        res.json({success:false, message: error.message})
+        logger.error('Forgot password failed', { requestId, error: error.message });
+        res.json({ success: false, message: error.message });
     }
 };
 
-// Reset Password
 const resetPassword = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const { token, newPassword } = req.body;
-
         if (!token || !newPassword) {
             return res.status(400).json({ success: false, message: "Token and new password are required" });
         }
-
-        // Find user with matching reset token
-        const user = await userModel.findOne({
-            resetToken: token,
-            resetTokenExpiry: { $gt: Date.now() }
-        });
-
+        const user = await userModel.findOne({ resetToken: token, resetTokenExpiry: { $gt: Date.now() } });
         if (!user) {
+            logger.warn('Invalid or expired reset token used', { requestId, ip: req.ip });
             return res.status(400).json({ success: false, message: "Invalid or expired reset token" });
         }
-
-        // Validate new password
         if (newPassword.length < 8) {
             return res.status(400).json({ success: false, message: "Password must be at least 8 characters" });
         }
-
-        // Hash new password
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(newPassword, salt);
-
-        // Update password and clear reset token
         user.password = hashedPassword;
         user.resetToken = undefined;
         user.resetTokenExpiry = undefined;
         await user.save();
-
+        eventLogger.auth.passwordReset({ requestId, userId: user._id, ip: req.ip, stage: 'completed' });
         res.json({ success: true, message: "Password updated successfully" });
-
     } catch (error) {
-        res.json({success:false, message: error.message})
+        logger.error('Reset password failed', { requestId, error: error.message });
+        res.json({ success: false, message: error.message });
     }
 };
 
-const createToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
-}
-
-//Route to handle user login
 const loginUser = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const { email, password } = req.body;
-
         const user = await userModel.findOne({ email });
         if (!user) {
+            eventLogger.auth.loginFailed({ requestId, email, reason: 'user_not_found', ip: req.ip });
             return res.status(404).json({ success: false, message: "User does not exist" });
         }
-        // Block login if not verified and not Google Auth
         if (!user.isVerified && user.password !== 'google-auth') {
+            eventLogger.auth.loginFailed({ requestId, email, userId: user._id, reason: 'email_not_verified', ip: req.ip });
             return res.status(403).json({ success: false, message: "Please verify your email before logging in." });
         }
         const isMatch = await bcrypt.compare(password, user.password);
         if (isMatch) {
             const token = createToken(user._id);
-            // Create session for this login
             await createSession(user._id, token, req);
+            eventLogger.auth.loginSuccess({ requestId, userId: user._id, email, method: 'email', ip: req.ip });
             res.json({ success: true, token });
-        }
-        else {
+        } else {
+            eventLogger.auth.loginFailed({ requestId, email, userId: user._id, reason: 'invalid_password', ip: req.ip });
             res.status(401).json({ success: false, message: "Invalid credentials" });
         }
     } catch (error) {
-        res.json({success:false, message: error.message})
+        logger.error('Login failed', { requestId, error: error.message });
+        res.json({ success: false, message: error.message });
     }
-}
+};
 
-//Route to handle user registration
 const registerUser = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const { name, email, password } = req.body;
-
-        //Check if user already exists
         const exists = await userModel.findOne({ email });
         if (exists) {
+            logger.warn('Registration attempted with existing email', { requestId, email, ip: req.ip });
             return res.status(400).json({ success: false, message: "User already exists" });
         }
-
-        // validate the user data
         if (!validator.isEmail(email)) {
             return res.status(400).json({ success: false, message: "Please enter a valid email" });
         }
         if (password.length < 8) {
             return res.status(400).json({ success: false, message: "Password must be at least 8 characters" });
         }
-        //Hash the password
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
-
-        // Generate verification code and expiry
         const verificationCode = generateResetToken();
-        const verificationCodeExpiry = new Date(Date.now() + 20 * 60 * 1000); // 20 mins
-        const verificationCodeResendAt = new Date(Date.now() + 4 * 60 * 1000); // 4 mins
-
-        //Create a new user (unverified)
+        const verificationCodeExpiry = new Date(Date.now() + 20 * 60 * 1000);
+        const verificationCodeResendAt = new Date(Date.now() + 4 * 60 * 1000);
         const newUser = new userModel({
-            name,
-            email,
-            password: hashedPassword,
-            isVerified: false,
-            verificationCode,
-            verificationCodeExpiry,
-            verificationCodeResendAt
-        })
-
+            name, email, password: hashedPassword,
+            isVerified: false, verificationCode,
+            verificationCodeExpiry, verificationCodeResendAt
+        });
         await newUser.save();
-
-        // Send verification email
+        eventLogger.auth.registered({ requestId, userId: newUser._id, email, method: 'email', ip: req.ip });
         const subject = 'Verify Your Email - FYN3';
         const message = `<div style="text-align:center;">
             <h2>Welcome, ${name}!</h2>
             <p>Thank you for signing up. Please verify your email address using the code below:</p>
-            <div style="font-size:32px; font-weight:bold; letter-spacing:8px; margin:20px 0;">${verificationCode}</div>
+            <div style="font-size:32px;font-weight:bold;letter-spacing:8px;margin:20px 0;">${verificationCode}</div>
             <p>This code will expire in 20 minutes.</p>
         </div>`;
-        const html = getEmailTemplate(subject, message);
         await transporter.sendMail({
             from: `"FYN3" <${process.env.EMAIL_USER}>`,
-            to: email,
-            subject,
-            html
-        });
-
-        res.status(201).json({ success: true, message: "Verification code sent to your email. Please verify to complete registration." })
-
+            to: email, subject,
+            html: getEmailTemplate(subject, message)
+        }).catch(err => eventLogger.system.emailError({ requestId, error: err.message, type: 'verification' }));
+        res.status(201).json({ success: true, message: "Verification code sent to your email. Please verify to complete registration." });
     } catch (error) {
-        res.json({success:false, message: error.message})
+        logger.error('Registration failed', { requestId, error: error.message });
+        res.json({ success: false, message: error.message });
     }
-}
+};
 
-// Email verification endpoint
 const verifyEmail = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const { email, code } = req.body;
         const user = await userModel.findOne({ email });
-        if (!user) {
-            return res.status(404).json({ success: false, message: "User not found" });
-        }
-        if (user.isVerified) {
-            return res.status(400).json({ success: false, message: "Email already verified" });
-        }
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+        if (user.isVerified) return res.status(400).json({ success: false, message: "Email already verified" });
         if (!user.verificationCode || !user.verificationCodeExpiry) {
             return res.status(400).json({ success: false, message: "No verification code found. Please request a new one." });
         }
         if (user.verificationCode !== code) {
+            logger.warn('Invalid verification code used', { requestId, email, ip: req.ip });
             return res.status(400).json({ success: false, message: "Invalid verification code" });
         }
         if (user.verificationCodeExpiry < new Date()) {
@@ -354,459 +239,327 @@ const verifyEmail = async (req, res) => {
         user.verificationCodeExpiry = undefined;
         user.verificationCodeResendAt = undefined;
         await user.save();
-
-        // Create token/session
         const token = createToken(user._id);
         await createSession(user._id, token, req);
+        logger.info('Email verified successfully', { requestId, userId: user._id, email, ip: req.ip });
         res.json({ success: true, token, message: "Email verified successfully" });
     } catch (error) {
-        res.json({success:false, message: error.message})
+        logger.error('Email verification failed', { requestId, error: error.message });
+        res.json({ success: false, message: error.message });
     }
-}
+};
 
-// Resend verification code endpoint
 const resendVerificationCode = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const { email } = req.body;
         const user = await userModel.findOne({ email });
-        if (!user) {
-            return res.status(404).json({ success: false, message: "User not found" });
-        }
-        if (user.isVerified) {
-            return res.status(400).json({ success: false, message: "Email already verified" });
-        }
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+        if (user.isVerified) return res.status(400).json({ success: false, message: "Email already verified" });
         if (user.verificationCodeResendAt && user.verificationCodeResendAt > new Date()) {
             const wait = Math.ceil((user.verificationCodeResendAt - new Date()) / 1000);
             return res.status(429).json({ success: false, message: `Please wait ${wait} seconds before requesting another code.` });
         }
-        // Generate new code and expiry
         const verificationCode = generateResetToken();
-        const verificationCodeExpiry = new Date(Date.now() + 20 * 60 * 1000); // 20 mins
-        const verificationCodeResendAt = new Date(Date.now() + 4 * 60 * 1000); // 4 mins
+        const verificationCodeExpiry = new Date(Date.now() + 20 * 60 * 1000);
+        const verificationCodeResendAt = new Date(Date.now() + 4 * 60 * 1000);
         user.verificationCode = verificationCode;
         user.verificationCodeExpiry = verificationCodeExpiry;
         user.verificationCodeResendAt = verificationCodeResendAt;
         await user.save();
-
-        // Send verification email
+        logger.info('Verification code resent', { requestId, userId: user._id, email, ip: req.ip });
         const subject = 'Verify Your Email - FYN3';
         const message = `<div style="text-align:center;">
             <h2>Hello, ${user.name}!</h2>
             <p>Your new verification code is:</p>
-            <div style="font-size:32px; font-weight:bold; letter-spacing:8px; margin:20px 0;">${verificationCode}</div>
+            <div style="font-size:32px;font-weight:bold;letter-spacing:8px;margin:20px 0;">${verificationCode}</div>
             <p>This code will expire in 20 minutes.</p>
         </div>`;
-        const html = getEmailTemplate(subject, message);
         await transporter.sendMail({
             from: `"FYN3" <${process.env.EMAIL_USER}>`,
-            to: email,
-            subject,
-            html
-        });
-
+            to: email, subject,
+            html: getEmailTemplate(subject, message)
+        }).catch(err => eventLogger.system.emailError({ requestId, error: err.message, type: 'resend_verification' }));
         res.json({ success: true, message: "Verification code resent to your email." });
     } catch (error) {
-        res.json({success:false, message: error.message})
+        logger.error('Resend verification failed', { requestId, error: error.message });
+        res.json({ success: false, message: error.message });
     }
-}
+};
 
-//Route for Admin login
 const adminLogin = async (req, res) => {
+    const requestId = req.requestId;
     try {
-        const { email, password } = req.body
+        const { email, password } = req.body;
         if (email === process.env.ADMIN_EMAIL && password === process.env.ADMIN_PASSWORD) {
-            const token = jwt.sign({ email, role: 'admin' }, process.env.JWT_SECRET, { expiresIn: '30d' })
-            res.json({ success: true, token })
+            const token = jwt.sign({ email, role: 'admin' }, process.env.JWT_SECRET, { expiresIn: '30d' });
+            eventLogger.admin.loggedIn({ requestId, email, ip: req.ip });
+            res.json({ success: true, token });
         } else {
-            res.status(401).json({ success: false, message: "Invalid credentials" })
+            logger.warn('Failed admin login attempt', { requestId, email, ip: req.ip });
+            res.status(401).json({ success: false, message: "Invalid credentials" });
         }
     } catch (error) {
-        res.json({success:false, message: error.message})
+        logger.error('Admin login error', { requestId, error: error.message });
+        res.json({ success: false, message: error.message });
     }
-}
+};
 
 const getProfile = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const user = await userModel.findById(req.body.userId).select('-password');
-        if (!user) {
-            return res.status(404).json({ success: false, message: "User not found" });
-        }
-        
-        // Map backend fields to frontend expected structure
-        const profileData = {
-            fullName: user.name,
-            email: user.email,
-            phoneNumber: user.phoneNumber,
-            profilePicture: user.profilePicture,
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+        res.json({ success: true, profile: {
+            fullName: user.name, email: user.email,
+            phoneNumber: user.phoneNumber, profilePicture: user.profilePicture,
             subscribed: user.subscribed
-        };
-        
-        res.json({ success: true, profile: profileData });
+        }});
     } catch (error) {
-        res.json({success:false, message: error.message})
+        logger.error('Get profile failed', { requestId, error: error.message });
+        res.json({ success: false, message: error.message });
     }
 };
 
 const updateProfile = async (req, res) => {
-    // Check for Multer file size error
+    const requestId = req.requestId;
     if (req.fileSizeError) {
         return res.status(400).json({ success: false, message: "Profile image is too large. Maximum allowed size is 2MB." });
     }
     try {
         const { fullName, phoneNumber } = req.body;
-        const profilePictureFile = req.file; // Single file upload
-        
-        const updateData = { 
-            name: fullName, 
-            phoneNumber
-        };
-        
-        // If profile picture is uploaded
-        if (profilePictureFile) {
-            const result = await cloudinary.uploader.upload(profilePictureFile.path, {
-                resource_type: 'image'
-            });
+        const updateData = { name: fullName, phoneNumber };
+        if (req.file) {
+            const result = await cloudinary.uploader.upload(req.file.path, { resource_type: 'image' });
             updateData.profilePicture = result.secure_url;
         }
-        
-        const updatedUser = await userModel.findByIdAndUpdate(
-            req.body.userId,
-            updateData,
-            { new: true }
-        ).select('-password');
-        
-        if (!updatedUser) {
-            return res.status(404).json({ success: false, message: "User not found" });
-        }
-        
-        const profileData = {
-            fullName: updatedUser.name,
-            email: updatedUser.email,
-            phoneNumber: updatedUser.phoneNumber,
-            profilePicture: updatedUser.profilePicture,
-        };
-        
-        res.json({ success: true, profile: profileData });
+        const updatedUser = await userModel.findByIdAndUpdate(req.body.userId, updateData, { new: true }).select('-password');
+        if (!updatedUser) return res.status(404).json({ success: false, message: "User not found" });
+        eventLogger.user.profileUpdated({ requestId, userId: req.body.userId, updatedFields: Object.keys(updateData) });
+        res.json({ success: true, profile: {
+            fullName: updatedUser.name, email: updatedUser.email,
+            phoneNumber: updatedUser.phoneNumber, profilePicture: updatedUser.profilePicture,
+        }});
     } catch (error) {
-        res.json({success:false, message: error.message})
+        logger.error('Update profile failed', { requestId, error: error.message });
+        res.json({ success: false, message: error.message });
     }
 };
 
 const changePassword = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const { currentPassword, newPassword } = req.body;
         const user = await userModel.findById(req.body.userId);
-        
-        if (!user) {
-            return res.status(404).json({ success: false, message: 'User not found' });
-        }
-        
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
         const isMatch = await bcrypt.compare(currentPassword, user.password);
         if (!isMatch) {
+            logger.warn('Failed password change - wrong current password', { requestId, userId: req.body.userId, ip: req.ip });
             return res.status(401).json({ success: false, message: 'Current password is incorrect' });
         }
-        
-        if (newPassword.length < 8) {
-            return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
-        }
-        
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-        user.password = hashedPassword;
+        if (newPassword.length < 8) return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+        user.password = await bcrypt.hash(newPassword, 10);
         await user.save();
-        
+        logger.info('Password changed successfully', { requestId, userId: req.body.userId, ip: req.ip });
         res.json({ success: true, message: 'Password updated successfully' });
     } catch (error) {
-        res.json({success:false, message: error.message})
+        logger.error('Change password failed', { requestId, error: error.message });
+        res.json({ success: false, message: error.message });
     }
 };
 
 const deactivateAccount = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const user = await userModel.findByIdAndDelete(req.body.userId);
-        
-        if (!user) {
-            return res.status(404).json({ success: false, message: 'User not found' });
-        }
-        
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+        logger.info('Account deactivated', { requestId, userId: req.body.userId, email: user.email, ip: req.ip });
         res.json({ success: true, message: 'Account deleted successfully' });
     } catch (error) {
-        res.json({success:false, message: error.message})
+        logger.error('Account deactivation failed', { requestId, error: error.message });
+        res.json({ success: false, message: error.message });
     }
 };
 
-// subscribe to newsletter
 const subscribeToNewsletter = async (req, res) => {
+    const requestId = req.requestId;
     try {
-        const userId = req.body.userId;
-        const user = await userModel.findById(userId);
-        if (!user) {
-            return res.status(404).json({ success: false, message: "User not found" });
-        }
-
+        const user = await userModel.findById(req.body.userId);
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
         user.subscribed = true;
         await user.save();
-
+        logger.info('User subscribed to newsletter', { requestId, userId: req.body.userId });
         res.json({ success: true, message: "Subscribed to newsletter successfully" });
     } catch (error) {
-        res.json({success:false, message: "An error occurred while subscribing to the newsletter"})
+        logger.error('Newsletter subscription failed', { requestId, error: error.message });
+        res.json({ success: false, message: "An error occurred while subscribing to the newsletter" });
     }
-}
+};
 
-// send newsletter
 const sendNewsletter = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const { subject, message, imageUrl } = req.body;
-        if (!subject || !message) {
-            return res.status(400).json({ success: false, message: 'Subject and message are required' });
-        }
-
+        if (!subject || !message) return res.status(400).json({ success: false, message: 'Subject and message are required' });
         const subscribedUsers = await userModel.find({ subscribed: true });
-
-        if (subscribedUsers.length === 0) {
-            return res.status(404).json({ success: false, message: 'No subscribed users found' });
-        }
-
+        if (subscribedUsers.length === 0) return res.status(404).json({ success: false, message: 'No subscribed users found' });
         const newsletterHtml = getEmailTemplate(subject, message, '', imageUrl);
-
+        let sent = 0, failed = 0;
         for (const user of subscribedUsers) {
             try {
-                const mailOptions = {
+                await transporter.sendMail({
                     from: `"FYN3" <${process.env.EMAIL_USER}>`,
-                    to: user.email,
-                    subject: subject,
-                    html: newsletterHtml,
-                };
-                await transporter.sendMail(mailOptions);
+                    to: user.email, subject, html: newsletterHtml,
+                });
+                sent++;
             } catch (error) {
-                console.error(`Failed to send newsletter to ${user.email}:`, error);
+                failed++;
+                eventLogger.system.emailError({ requestId, error: error.message, type: 'newsletter', recipient: user.email });
             }
         }
-
+        logger.info('Newsletter sent', { requestId, total: subscribedUsers.length, sent, failed });
         res.json({ success: true, message: 'Newsletter sent successfully' });
-
     } catch (error) {
-        res.json({success:false, message: 'An error occurred while sending the newsletter'})
+        logger.error('Newsletter send failed', { requestId, error: error.message });
+        res.json({ success: false, message: 'An error occurred while sending the newsletter' });
     }
 };
 
-// upload newsletter image
 const uploadNewsletterImage = async (req, res) => {
-    // Check for Multer file size error
-    if (req.fileSizeError) {
-        return res.status(400).json({ success: false, message: "Newsletter image is too large. Maximum allowed size is 2MB." });
-    }
+    const requestId = req.requestId;
+    if (req.fileSizeError) return res.status(400).json({ success: false, message: "Newsletter image is too large. Maximum allowed size is 2MB." });
     try {
-        if (!req.file) {
-            return res.status(400).json({ success: false, message: 'No image file provided' });
-        }
-
-        // Check if cloudinary is configured
+        if (!req.file) return res.status(400).json({ success: false, message: 'No image file provided' });
         if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
-            console.error('Cloudinary configuration missing');
-            return res.status(500).json({ 
-                success: false, 
-                message: 'Image upload service not configured' 
-            });
+            eventLogger.system.cloudinaryError({ requestId, error: 'Cloudinary configuration missing' });
+            return res.status(500).json({ success: false, message: 'Image upload service not configured' });
         }
-
-        // Upload to Cloudinary
-        const result = await cloudinary.uploader.upload(req.file.path, {
-            resource_type: 'image',
-            folder: 'newsletter-images'
-        });
-
-        res.json({ 
-            success: true, 
-            imageUrl: result.secure_url,
-            message: 'Image uploaded successfully' 
-        });
-
+        const result = await cloudinary.uploader.upload(req.file.path, { resource_type: 'image', folder: 'newsletter-images' });
+        logger.info('Newsletter image uploaded', { requestId, url: result.secure_url });
+        res.json({ success: true, imageUrl: result.secure_url, message: 'Image uploaded successfully' });
     } catch (error) {
-        console.error('Newsletter image upload error:', error);
-        
-        // Provide more specific error messages
+        eventLogger.system.cloudinaryError({ requestId, error: error.message, context: 'newsletter_image_upload' });
         let errorMessage = 'An error occurred while uploading the image';
-        if (error.message.includes('Invalid API credentials')) {
-            errorMessage = 'Image upload service configuration error';
-        } else if (error.message.includes('File too large')) {
-            errorMessage = 'Image file is too large';
-        } else if (error.message.includes('Invalid file type')) {
-            errorMessage = 'Invalid image file type';
-        }
-        
-        res.status(500).json({ 
-            success: false, 
-            message: errorMessage,
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+        if (error.message.includes('Invalid API credentials')) errorMessage = 'Image upload service configuration error';
+        else if (error.message.includes('File too large')) errorMessage = 'Image file is too large';
+        else if (error.message.includes('Invalid file type')) errorMessage = 'Invalid image file type';
+        res.status(500).json({ success: false, message: errorMessage });
     }
 };
 
-// get subscribers count
 const getSubscribersCount = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const count = await userModel.countDocuments({ subscribed: true });
         res.json({ success: true, count });
     } catch (error) {
-        res.json({success:false, message: 'An error occurred while fetching the subscribers count'})
+        logger.error('Get subscribers count failed', { requestId, error: error.message });
+        res.json({ success: false, message: 'An error occurred while fetching the subscribers count' });
     }
-}
+};
 
-// Get user sessions
 const getUserSessions = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const userId = req.body.userId;
-        const sessions = await sessionModel.find({ 
-            userId, 
-            isActive: true 
-        }).sort({ lastActivity: -1 });
-
+        const sessions = await sessionModel.find({ userId, isActive: true }).sort({ lastActivity: -1 });
         const formattedSessions = sessions.map(session => ({
-            id: session._id,
-            deviceInfo: session.deviceInfo,
-            lastActivity: session.lastActivity,
-            createdAt: session.createdAt,
+            id: session._id, deviceInfo: session.deviceInfo,
+            lastActivity: session.lastActivity, createdAt: session.createdAt,
             isCurrentSession: session.token === req.headers.token
         }));
-
         res.json({ success: true, sessions: formattedSessions });
     } catch (error) {
+        logger.error('Get user sessions failed', { requestId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
-// Sign out from all devices
 const signOutAllDevices = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const userId = req.body.userId;
-        
-        // Deactivate all sessions for this user
-        await sessionModel.updateMany(
-            { userId, isActive: true },
-            { isActive: false }
-        );
-
+        await sessionModel.updateMany({ userId, isActive: true }, { isActive: false });
+        eventLogger.auth.logout({ requestId, userId, type: 'all_devices', ip: req.ip });
         res.json({ success: true, message: 'Signed out from all devices successfully' });
     } catch (error) {
+        logger.error('Sign out all devices failed', { requestId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
-// Sign out from specific device
 const signOutDevice = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const { sessionId } = req.body;
         const userId = req.body.userId;
-
         const session = await sessionModel.findOneAndUpdate(
             { _id: sessionId, userId, isActive: true },
-            { isActive: false },
-            { new: true }
+            { isActive: false }, { new: true }
         );
-
-        if (!session) {
-            return res.status(404).json({ success: false, message: 'Session not found' });
-        }
-
+        if (!session) return res.status(404).json({ success: false, message: 'Session not found' });
+        eventLogger.auth.logout({ requestId, userId, sessionId, type: 'single_device', ip: req.ip });
         res.json({ success: true, message: 'Signed out from device successfully' });
     } catch (error) {
+        logger.error('Sign out device failed', { requestId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
-// Create session helper function
-const createSession = async (userId, token, req) => {
-    const deviceInfo = getDeviceInfo(req.headers['user-agent'], req.ip);
-    
-    const session = new sessionModel({
-        userId,
-        token,
-        deviceInfo
-    });
-    
-    await session.save();
-    return session;
-};
-
-// Add product to wishlist
 const addToWishlist = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const userId = req.body.userId;
         const { productId } = req.params;
-        if (!productId) {
-            return res.status(400).json({ success: false, message: 'Product ID is required' });
-        }
+        if (!productId) return res.status(400).json({ success: false, message: 'Product ID is required' });
         const user = await userModel.findById(userId);
-        if (!user) {
-            return res.status(404).json({ success: false, message: 'User not found' });
-        }
-        if (user.wishlist.includes(productId)) {
-            return res.status(400).json({ success: false, message: 'Product already in wishlist' });
-        }
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+        if (user.wishlist.includes(productId)) return res.status(400).json({ success: false, message: 'Product already in wishlist' });
         user.wishlist.push(productId);
         await user.save();
+        eventLogger.user.wishlistUpdated({ requestId, userId, productId, action: 'added' });
         return res.json({ success: true, message: 'Product added to wishlist' });
     } catch (error) {
+        logger.error('Add to wishlist failed', { requestId, error: error.message });
         return res.status(500).json({ success: false, message: error.message });
     }
 };
 
-// Remove product from wishlist
 const removeFromWishlist = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const userId = req.body.userId;
         const { productId } = req.params;
-        if (!productId) {
-            return res.status(400).json({ success: false, message: 'Product ID is required' });
-        }
+        if (!productId) return res.status(400).json({ success: false, message: 'Product ID is required' });
         const user = await userModel.findById(userId);
-        if (!user) {
-            return res.status(404).json({ success: false, message: 'User not found' });
-        }
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
         user.wishlist = user.wishlist.filter(id => id.toString() !== productId);
         await user.save();
+        eventLogger.user.wishlistUpdated({ requestId, userId, productId, action: 'removed' });
         return res.json({ success: true, message: 'Product removed from wishlist' });
     } catch (error) {
+        logger.error('Remove from wishlist failed', { requestId, error: error.message });
         return res.status(500).json({ success: false, message: error.message });
     }
 };
 
-// Get user's wishlist (populated)
 const getWishlist = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const userId = req.body.userId;
         const user = await userModel.findById(userId).populate('wishlist');
-        if (!user) {
-            return res.status(404).json({ success: false, message: 'User not found' });
-        }
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
         return res.json({ success: true, wishlist: user.wishlist });
     } catch (error) {
+        logger.error('Get wishlist failed', { requestId, error: error.message });
         return res.status(500).json({ success: false, message: error.message });
     }
 };
 
-export { 
-    loginUser, 
-    registerUser, 
-    adminLogin, 
-    googleAuth, 
-    forgotPassword, 
-    resetPassword, 
-    updateProfile, 
-    changePassword, 
-    getProfile, 
-    deactivateAccount,
-    subscribeToNewsletter,
-    sendNewsletter,
-    uploadNewsletterImage,
-    getSubscribersCount,
-    getUserSessions,
-    signOutAllDevices,
-    signOutDevice,
-    createSession,
-    verifyEmail,
-    resendVerificationCode,
-    addToWishlist,
-    removeFromWishlist,
-    getWishlist
+export {
+    loginUser, registerUser, adminLogin, googleAuth, forgotPassword, resetPassword,
+    updateProfile, changePassword, getProfile, deactivateAccount, subscribeToNewsletter,
+    sendNewsletter, uploadNewsletterImage, getSubscribersCount, getUserSessions,
+    signOutAllDevices, signOutDevice, createSession, verifyEmail, resendVerificationCode,
+    addToWishlist, removeFromWishlist, getWishlist
 };

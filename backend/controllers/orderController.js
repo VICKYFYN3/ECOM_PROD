@@ -1,487 +1,358 @@
 import orderModel from "../models/orderModel.js"
 import userModel from '../models/userModel.js';
-import productModel from '../models/productModel.js'; // Add this import
+import productModel from '../models/productModel.js';
 import Stripe from 'stripe';
 import Paystack from "paystack";
 import { getOrderConfirmationEmail, getOrderStatusUpdateEmail, getAdminOrderNotificationEmail, getStockAlertEmail } from "../utils/emailTemplates.js";
 import transporter from "../config/nodemailer.js";
+import eventLogger from "../utils/eventLogger.js";
+import logger from "../utils/logger.js";
 
-//global variables
 const currency = 'ngn'
 const deliveryCharge = 10
-
-//gateway interface
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 const paystack = Paystack(process.env.PAYSTACK_SECRET_KEY);
 
-// Helper function to update stock for ordered items
-const updateProductStock = async (items) => {
+const updateProductStock = async (items, requestId = null) => {
     try {
         for (const item of items) {
             const product = await productModel.findById(item._id);
             if (!product) {
-                console.warn(`Product not found: ${item._id}`);
+                logger.warn('Product not found during stock update', { requestId, productId: item._id });
                 continue;
             }
-
-            // Get current stock for the specific size
-            const currentSizeStock = product.sizeStock instanceof Map 
+            const currentSizeStock = product.sizeStock instanceof Map
                 ? (product.sizeStock.get(item.size) || 0)
                 : (product.sizeStock?.[item.size] || 0);
-
-            // Calculate new stock (prevent negative stock)
             const newSizeStock = Math.max(0, currentSizeStock - item.quantity);
-
-            // Update the specific size stock
-            const update = {
-                $set: {
-                    [`sizeStock.${item.size}`]: newSizeStock
-                }
-            };
-
+            const update = { $set: { [`sizeStock.${item.size}`]: newSizeStock } };
             await productModel.findByIdAndUpdate(item._id, update);
-
-            // Recalculate total stock from all sizes
             const updatedProduct = await productModel.findById(item._id);
             let totalStock = 0;
-            
             if (updatedProduct.sizeStock instanceof Map) {
-                for (const [_, stock] of updatedProduct.sizeStock) {
-                    totalStock += stock || 0;
-                }
+                for (const [_, stock] of updatedProduct.sizeStock) totalStock += stock || 0;
             } else if (updatedProduct.sizeStock) {
-                Object.values(updatedProduct.sizeStock).forEach(stock => {
-                    totalStock += stock || 0;
-                });
+                Object.values(updatedProduct.sizeStock).forEach(stock => { totalStock += stock || 0; });
             }
-
-            // Update total stock quantity
             await productModel.findByIdAndUpdate(item._id, { stockQuantity: totalStock });
-
-            // Send low stock or out of stock email to admin
-            if (process.env.NOTIFY_EMAIL) {
-                if (newSizeStock === 0) {
+            eventLogger.product.stockUpdated({
+                requestId,
+                productId: item._id,
+                productName: product.name,
+                size: item.size,
+                previousStock: currentSizeStock,
+                newStock: newSizeStock,
+                totalStock,
+            });
+            if (newSizeStock === 0) {
+                eventLogger.product.lowStock({ requestId, productId: item._id, productName: product.name, size: item.size, stock: 0, alert: 'out_of_stock' });
+                if (process.env.NOTIFY_EMAIL) {
                     await transporter.sendMail({
                         from: `"FYN3" <${process.env.EMAIL_USER}>`,
                         to: process.env.NOTIFY_EMAIL,
-                        subject: undefined, // will be set by getStockAlertEmail
                         html: getStockAlertEmail(product, item.size, newSizeStock, 'out')
-                    });
-                } else if (newSizeStock <= 10) {
+                    }).catch(err => logger.error('Stock alert email failed', { requestId, error: err.message }));
+                }
+            } else if (newSizeStock <= 10) {
+                eventLogger.product.lowStock({ requestId, productId: item._id, productName: product.name, size: item.size, stock: newSizeStock, alert: 'low_stock' });
+                if (process.env.NOTIFY_EMAIL) {
                     await transporter.sendMail({
                         from: `"FYN3" <${process.env.EMAIL_USER}>`,
                         to: process.env.NOTIFY_EMAIL,
-                        subject: undefined, // will be set by getStockAlertEmail
                         html: getStockAlertEmail(product, item.size, newSizeStock, 'low')
-                    });
+                    }).catch(err => logger.error('Stock alert email failed', { requestId, error: err.message }));
                 }
             }
         }
     } catch (error) {
-        console.error('Error updating stock:', error);
+        logger.error('Error updating stock', { requestId, error: error.message, stack: error.stack });
         throw error;
     }
 };
 
-// Helper function to restore stock (for failed orders)
-const restoreProductStock = async (items) => {
+const restoreProductStock = async (items, requestId = null) => {
     try {
         for (const item of items) {
             const product = await productModel.findById(item._id);
-            if (!product) {
-                console.warn(`Product not found: ${item._id}`);
-                continue;
-            }
-
-            // Get current stock for the specific size
-            const currentSizeStock = product.sizeStock instanceof Map 
+            if (!product) continue;
+            const currentSizeStock = product.sizeStock instanceof Map
                 ? (product.sizeStock.get(item.size) || 0)
                 : (product.sizeStock?.[item.size] || 0);
-
-            // Restore stock
             const restoredSizeStock = currentSizeStock + item.quantity;
-
-            // Update the specific size stock
-            const update = {
-                $set: {
-                    [`sizeStock.${item.size}`]: restoredSizeStock
-                }
-            };
-
-            await productModel.findByIdAndUpdate(item._id, update);
-
-            // Recalculate total stock from all sizes
+            await productModel.findByIdAndUpdate(item._id, { $set: { [`sizeStock.${item.size}`]: restoredSizeStock } });
             const updatedProduct = await productModel.findById(item._id);
             let totalStock = 0;
-            
             if (updatedProduct.sizeStock instanceof Map) {
-                for (const [_, stock] of updatedProduct.sizeStock) {
-                    totalStock += stock || 0;
-                }
+                for (const [_, stock] of updatedProduct.sizeStock) totalStock += stock || 0;
             } else if (updatedProduct.sizeStock) {
-                Object.values(updatedProduct.sizeStock).forEach(stock => {
-                    totalStock += stock || 0;
-                });
+                Object.values(updatedProduct.sizeStock).forEach(stock => { totalStock += stock || 0; });
             }
-
-            // Update total stock quantity
             await productModel.findByIdAndUpdate(item._id, { stockQuantity: totalStock });
+            logger.info('Stock restored', { requestId, productId: item._id, size: item.size, restored: item.quantity });
         }
     } catch (error) {
-        console.error('Error restoring stock:', error);
+        logger.error('Error restoring stock', { requestId, error: error.message });
         throw error;
     }
 };
 
-// Validate stock availability before placing order
 const validateStockAvailability = async (items) => {
     for (const item of items) {
         const product = await productModel.findById(item._id);
-        if (!product) {
-            throw new Error(`Product not found: ${item.name}`);
-        }
-
-        const currentSizeStock = product.sizeStock instanceof Map 
+        if (!product) throw new Error(`Product not found: ${item.name}`);
+        const currentSizeStock = product.sizeStock instanceof Map
             ? (product.sizeStock.get(item.size) || 0)
             : (product.sizeStock?.[item.size] || 0);
-
         if (currentSizeStock < item.quantity) {
             throw new Error(`Insufficient stock for ${item.name} (Size: ${item.size}). Available: ${currentSizeStock}, Requested: ${item.quantity}`);
         }
     }
 };
 
-// Placing orders using COD
 const placeOrder = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const { userId, items, amount, address } = req.body;
-
-        // Validate stock availability first
         await validateStockAvailability(items);
-
-        // Update stock before placing order
-        await updateProductStock(items);
-
-        const orderData = {
-            userId,
-            items,
-            address,
-            amount,
-            paymentMethod: "COD",
-            payment: false
-        };
-
+        await updateProductStock(items, requestId);
+        const orderData = { userId, items, address, amount, paymentMethod: "COD", payment: false };
         const newOrder = new orderModel(orderData);
         await newOrder.save();
-
         await userModel.findByIdAndUpdate(userId, { cartData: {} });
-
-        // Send order confirmation email
-        const emailHtml = getOrderConfirmationEmail(newOrder);
-        const subject = `Your Order is Confirmed!`;
+        eventLogger.order.placed({
+            requestId,
+            orderId: newOrder._id,
+            userId,
+            amount,
+            itemCount: items.length,
+            paymentMethod: 'COD',
+            address: { city: address.city, country: address.country },
+        });
         await transporter.sendMail({
             from: `"FYN3" <${process.env.EMAIL_USER}>`,
             to: address.email,
-            subject: subject,
-            html: emailHtml
-        });
-
-        // Send admin notification email
+            subject: `Your Order is Confirmed!`,
+            html: getOrderConfirmationEmail(newOrder)
+        }).catch(err => eventLogger.system.emailError({ requestId, error: err.message, type: 'order_confirmation' }));
         if (process.env.NOTIFY_EMAIL) {
-            const adminHtml = getAdminOrderNotificationEmail(newOrder);
             await transporter.sendMail({
                 from: `"FYN3" <${process.env.EMAIL_USER}>`,
                 to: process.env.NOTIFY_EMAIL,
-                subject: undefined, // will be set by getAdminOrderNotificationEmail
-                html: adminHtml
-            });
+                html: getAdminOrderNotificationEmail(newOrder)
+            }).catch(err => eventLogger.system.emailError({ requestId, error: err.message, type: 'admin_notification' }));
         }
-
         res.json({ success: true, message: "Order Placed" });
-
     } catch (error) {
+        logger.error('COD order failed', { requestId, error: error.message, userId: req.body?.userId });
         res.json({ success: false, message: error.message });
     }
 };
 
-// placing orders using Stripe method
 const placeOrderStripe = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const { userId, items, amount, address } = req.body;
         const { origin } = req.headers;
-
-        // Validate stock availability first
         await validateStockAvailability(items);
-
-        // Update stock before creating order
-        await updateProductStock(items);
-
-        const orderData = {
-            userId,
-            items,
-            address,
-            amount,
-            paymentMethod: "Stripe",
-            payment: false
-        };
-
+        await updateProductStock(items, requestId);
+        const orderData = { userId, items, address, amount, paymentMethod: "Stripe", payment: false };
         const newOrder = new orderModel(orderData);
         await newOrder.save();
-
+        eventLogger.order.paymentInitiated({ requestId, orderId: newOrder._id, userId, amount, provider: 'stripe' });
         const line_items = items.map((item) => ({
-            price_data: {
-                currency: currency,
-                product_data: {
-                    name: item.name
-                },
-                unit_amount: item.price * 100
-            },
+            price_data: { currency, product_data: { name: item.name }, unit_amount: item.price * 100 },
             quantity: item.quantity
         }));
-
         line_items.push({
-            price_data: {
-                currency: currency,
-                product_data: {
-                    name: 'Delivery Charges'
-                },
-                unit_amount: deliveryCharge * 100
-            },
+            price_data: { currency, product_data: { name: 'Delivery Charges' }, unit_amount: deliveryCharge * 100 },
             quantity: 1
         });
-
         const session = await stripe.checkout.sessions.create({
             success_url: `${origin}/verify?success=true&orderId=${newOrder._id}`,
             cancel_url: `${origin}/verify?success=false&orderId=${newOrder._id}`,
             line_items,
             mode: 'payment',
         });
-
         res.json({ success: true, session_url: session.url });
     } catch (error) {
+        eventLogger.order.paymentFailed({ requestId, error: error.message, provider: 'stripe', userId: req.body?.userId });
         res.json({ success: false, message: error.message });
     }
 };
 
-//verify Stripe
 const verifyStripe = async (req, res) => {
+    const requestId = req.requestId;
     const { orderId, success, userId } = req.body;
-
     try {
         if (success === "true") {
             await orderModel.findByIdAndUpdate(orderId, { payment: true });
             const order = await orderModel.findById(orderId);
-            // Send order confirmation email
-            const emailHtml = getOrderConfirmationEmail(order);
-            const subject = `Your Order is Confirmed!`;
+            eventLogger.order.paymentSuccess({ requestId, orderId, userId, provider: 'stripe', amount: order.amount });
             await transporter.sendMail({
                 from: `"FYN3" <${process.env.EMAIL_USER}>`,
                 to: order.address.email,
-                subject: subject,
-                html: emailHtml
-            });
-            // Send admin notification email
+                subject: `Your Order is Confirmed!`,
+                html: getOrderConfirmationEmail(order)
+            }).catch(err => eventLogger.system.emailError({ requestId, error: err.message }));
             if (process.env.NOTIFY_EMAIL) {
-                const adminHtml = getAdminOrderNotificationEmail(order);
                 await transporter.sendMail({
                     from: `"FYN3" <${process.env.EMAIL_USER}>`,
                     to: process.env.NOTIFY_EMAIL,
-                    subject: undefined, // will be set by getAdminOrderNotificationEmail
-                    html: adminHtml
-                });
+                    html: getAdminOrderNotificationEmail(order)
+                }).catch(err => eventLogger.system.emailError({ requestId, error: err.message }));
             }
             await userModel.findByIdAndUpdate(userId, { cartData: {} });
             res.json({ success: true });
         } else {
-            // If payment failed, restore stock and delete order
             const order = await orderModel.findById(orderId);
-            if (order && order.items) {
-                await restoreProductStock(order.items);
-            }
+            if (order && order.items) await restoreProductStock(order.items, requestId);
             await orderModel.findByIdAndDelete(orderId);
+            eventLogger.order.paymentFailed({ requestId, orderId, userId, provider: 'stripe', reason: 'user_cancelled' });
             res.json({ success: false });
         }
     } catch (error) {
+        logger.error('Stripe verification failed', { requestId, orderId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
-// placing orders using Paystack
 const placeOrderPaystack = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const { userId, items, amount, address } = req.body;
         const { origin } = req.headers;
-
-        // Validate stock availability first
         await validateStockAvailability(items);
-
-        // Update stock before creating order
-        await updateProductStock(items);
-
-        const orderData = {
-            userId,
-            items,
-            address,
-            amount,
-            paymentMethod: "Paystack",
-            payment: false
-        };
-
+        await updateProductStock(items, requestId);
+        const orderData = { userId, items, address, amount, paymentMethod: "Paystack", payment: false };
         const newOrder = new orderModel(orderData);
         await newOrder.save();
-
-        // Send admin notification email
+        eventLogger.order.paymentInitiated({ requestId, orderId: newOrder._id, userId, amount, provider: 'paystack' });
         if (process.env.NOTIFY_EMAIL) {
-            const adminHtml = getAdminOrderNotificationEmail(newOrder);
             await transporter.sendMail({
                 from: `"FYN3" <${process.env.EMAIL_USER}>`,
                 to: process.env.NOTIFY_EMAIL,
-                subject: undefined, // will be set by getAdminOrderNotificationEmail
-                html: adminHtml
-            });
+                html: getAdminOrderNotificationEmail(newOrder)
+            }).catch(err => eventLogger.system.emailError({ requestId, error: err.message }));
         }
-
-        // Create Paystack transaction
         const transaction = await paystack.transaction.initialize({
-            amount: (amount + deliveryCharge) * 100, // Convert to kobo/cent
+            amount: (amount + deliveryCharge) * 100,
             email: address.email,
             reference: `order_${newOrder._id}_${Date.now()}`,
             callback_url: `${origin}/verify-paystack?orderId=${newOrder._id}`,
             currency: currency.toUpperCase(),
-            metadata: {
-                orderId: newOrder._id.toString(),
-                userId
-            }
+            metadata: { orderId: newOrder._id.toString(), userId }
         });
-
-        res.json({
-            success: true,
-            authorization_url: transaction.data.authorization_url
-        });
-
+        res.json({ success: true, authorization_url: transaction.data.authorization_url });
     } catch (error) {
+        eventLogger.order.paymentFailed({ requestId, error: error.message, provider: 'paystack', userId: req.body?.userId });
         res.json({ success: false, message: error.message });
     }
 };
 
-//verify Paystack
 const verifyPaystack = async (req, res) => {
+    const requestId = req.requestId;
     const { orderId, reference } = req.body;
-
     try {
         const response = await paystack.transaction.verify(reference);
-        
         if (response.status) {
             await orderModel.findByIdAndUpdate(orderId, { payment: true });
             const order = await orderModel.findById(orderId);
-            // Send order confirmation email
-            const emailHtml = getOrderConfirmationEmail(order);
-            const subject = `Your Order is Confirmed!`;
+            eventLogger.order.paymentSuccess({ requestId, orderId, provider: 'paystack', amount: order.amount, reference });
             await transporter.sendMail({
                 from: `"FYN3" <${process.env.EMAIL_USER}>`,
                 to: order.address.email,
-                subject: subject,
-                html: emailHtml
-            });
-            // Send admin notification email
+                subject: `Your Order is Confirmed!`,
+                html: getOrderConfirmationEmail(order)
+            }).catch(err => eventLogger.system.emailError({ requestId, error: err.message }));
             if (process.env.NOTIFY_EMAIL) {
-                const adminHtml = getAdminOrderNotificationEmail(order);
                 await transporter.sendMail({
                     from: `"FYN3" <${process.env.EMAIL_USER}>`,
                     to: process.env.NOTIFY_EMAIL,
-                    subject: undefined, // will be set by getAdminOrderNotificationEmail
-                    html: adminHtml
-                });
+                    html: getAdminOrderNotificationEmail(order)
+                }).catch(err => eventLogger.system.emailError({ requestId, error: err.message }));
             }
             await userModel.findByIdAndUpdate(order.userId, { cartData: {} });
             res.json({ success: true });
         } else {
-            // If payment failed, restore stock and delete order
             const order = await orderModel.findById(orderId);
-            if (order && order.items) {
-                await restoreProductStock(order.items);
-            }
+            if (order && order.items) await restoreProductStock(order.items, requestId);
             await orderModel.findByIdAndDelete(orderId);
+            eventLogger.order.paymentFailed({ requestId, orderId, provider: 'paystack', reason: 'verification_failed', reference });
             res.json({ success: false });
         }
     } catch (error) {
+        logger.error('Paystack verification failed', { requestId, orderId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
-//All orders data for Admin panel
 const allOrders = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const orders = await orderModel.find({});
+        eventLogger.admin.orderManaged({ requestId, action: 'view_all_orders', count: orders.length });
         res.json({ success: true, orders });
     } catch (error) {
+        logger.error('Failed to fetch all orders', { requestId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
-//user order for frontend
 const userOrders = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const { userId } = req.body;
-
         const orders = await orderModel.find({ userId });
         res.json({ success: true, orders });
     } catch (error) {
+        logger.error('Failed to fetch user orders', { requestId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
-//update order status from admin panel
 const updateStatus = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const { orderId, status } = req.body;
         await orderModel.findByIdAndUpdate(orderId, { status });
-
-        // Send status update email
+        eventLogger.order.statusUpdated({ requestId, orderId, status, updatedBy: req.body?.adminId || 'admin' });
         const order = await orderModel.findById(orderId);
         if (order) {
             const emailHtml = getOrderStatusUpdateEmail(order);
             if (emailHtml) {
-                const mailOptions = {
+                let subject = `Your Order Status: ${status}`;
+                if (emailHtml.includes("<title>")) {
+                    subject = emailHtml.split('<title>')[1].split('</title>')[0];
+                }
+                await transporter.sendMail({
                     from: `"FYN3" <${process.env.EMAIL_USER}>`,
                     to: order.address.email,
-                    subject: `Your Order Status: ${status}`,
+                    subject,
                     html: emailHtml
-                };
-                
-                // This is a workaround, the subject should be part of the emailHtml
-                if (emailHtml.includes("<title>")) {
-                    mailOptions.subject = emailHtml.split('<title>')[1].split('</title>')[0];
-                }
-
-                await transporter.sendMail(mailOptions);
+                }).catch(err => eventLogger.system.emailError({ requestId, error: err.message, type: 'status_update' }));
             }
         }
-
         res.json({ success: true, message: "Status Updated" });
     } catch (error) {
+        logger.error('Failed to update order status', { requestId, error: error.message });
         res.json({ success: false, message: "Error" });
     }
 };
 
 const updatePaymentStatus = async (req, res) => {
+    const requestId = req.requestId;
     try {
         const { orderId, payment } = req.body;
         await orderModel.findByIdAndUpdate(orderId, { payment });
+        logger.info('Payment status updated manually', { requestId, orderId, payment, updatedBy: 'admin' });
         res.json({ success: true, message: "Payment status updated successfully" });
     } catch (error) {
+        logger.error('Failed to update payment status', { requestId, error: error.message });
         res.json({ success: false, message: "Error updating payment status" });
     }
-}
+};
 
-export { 
-    verifyStripe, 
-    placeOrder, 
-    placeOrderStripe, 
-    placeOrderPaystack, 
-    allOrders, 
-    userOrders, 
-    updateStatus, 
-    verifyPaystack,
-    updatePaymentStatus
+export {
+    verifyStripe, placeOrder, placeOrderStripe, placeOrderPaystack,
+    allOrders, userOrders, updateStatus, verifyPaystack, updatePaymentStatus
 };

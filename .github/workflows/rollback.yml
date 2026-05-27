@@ -1,0 +1,46 @@
+name: Rollback Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type ROLLBACK to confirm'
+        required: true
+
+jobs:
+  rollback:
+    runs-on: self-hosted
+    if: ${{ github.event.inputs.confirm == 'ROLLBACK' }}
+
+    steps:
+      - name: Check rollback window
+        run: |
+          DEPLOY_FILE=~/.last_deploy_time
+          if [ -f "$DEPLOY_FILE" ]; then
+            LAST_DEPLOY=$(cat $DEPLOY_FILE)
+            NOW=$(date +%s)
+            DIFF=$((NOW - LAST_DEPLOY))
+            HOURS=$((DIFF / 3600))
+            LIMIT=48
+            if [ $DIFF -gt $((LIMIT * 3600)) ]; then
+              echo "❌ Rollback window expired (${HOURS}hrs since last deploy)"
+              echo "Window: ${LIMIT}hrs. Please open a PR to rollback."
+              exit 1
+            else
+              echo "✅ Within rollback window (${HOURS}hrs since deploy)"
+            fi
+          fi
+
+      - name: Rollback all deployments
+        run: |
+          kubectl rollout undo deployment/backend
+          kubectl rollout undo deployment/frontend
+          kubectl rollout undo deployment/admin
+          kubectl rollout status deployment/backend
+          kubectl rollout status deployment/frontend
+          kubectl rollout status deployment/admin
+
+      - name: Verify rollback
+        run: |
+          kubectl get pods
+          echo "✅ Rollback complete"

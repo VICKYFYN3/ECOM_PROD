@@ -1,0 +1,67 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to deploy (commit SHA or latest)'
+        required: true
+        default: 'latest'
+      confirm:
+        description: 'Type DEPLOY to confirm'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    if: ${{ github.event.inputs.confirm == 'DEPLOY' }}
+
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "DEPLOY" ]; then
+            echo "❌ Deployment cancelled - confirmation not provided"
+            exit 1
+          fi
+
+      - name: Check rollback window
+        run: |
+          DEPLOY_FILE=~/.last_deploy_time
+          if [ -f "$DEPLOY_FILE" ]; then
+            LAST_DEPLOY=$(cat $DEPLOY_FILE)
+            NOW=$(date +%s)
+            DIFF=$((NOW - LAST_DEPLOY))
+            HOURS=$((DIFF / 3600))
+            echo "Last deployment was ${HOURS} hours ago"
+          fi
+
+      - name: Update backend image
+        run: |
+          kubectl set image deployment/backend \
+            backend=ghcr.io/vickyfyn3/commerce-backend:${{ github.event.inputs.image_tag }}
+          kubectl rollout status deployment/backend
+
+      - name: Update frontend image
+        run: |
+          kubectl set image deployment/frontend \
+            frontend=ghcr.io/vickyfyn3/commerce-frontend:${{ github.event.inputs.image_tag }}
+          kubectl rollout status deployment/frontend
+
+      - name: Update admin image
+        run: |
+          kubectl set image deployment/admin \
+            admin=ghcr.io/vickyfyn3/commerce-admin:${{ github.event.inputs.image_tag }}
+          kubectl rollout status deployment/admin
+
+      - name: Stamp deployment time
+        run: |
+          date +%s > ~/.last_deploy_time
+          kubectl annotate deployments --all \
+            deploy-time=$(date +%s) \
+            deploy-sha=${{ github.event.inputs.image_tag }} \
+            --overwrite
+
+      - name: Verify deployment
+        run: |
+          kubectl get pods
+          echo "✅ Deployment complete"

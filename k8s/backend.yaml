@@ -1,8 +1,10 @@
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: backend
 spec:
+  progressDeadlineSeconds: 600
   replicas: 4
   selector:
     matchLabels:
@@ -21,6 +23,13 @@ spec:
           envFrom:
             - secretRef:
                 name: commerce-secrets
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
 ---
 apiVersion: v1
 kind: Service

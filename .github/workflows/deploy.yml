@@ -33,35 +33,35 @@ jobs:
             DIFF=$((NOW - LAST_DEPLOY))
             HOURS=$((DIFF / 3600))
             echo "Last deployment was ${HOURS} hours ago"
+          else
+            echo "No previous deployment found"
           fi
 
-      - name: Update backend image
+      - name: Restart backend
         run: |
-          kubectl set image deployment/backend \
-            backend=ghcr.io/vickyfyn3/commerce-backend:${{ github.event.inputs.image_tag }}
-          kubectl rollout status deployment/backend
+          kubectl rollout restart deployment/backend
+          kubectl rollout status deployment/backend --timeout=5m
 
-      - name: Update frontend image
+      - name: Restart frontend
         run: |
-          kubectl set image deployment/frontend \
-            frontend=ghcr.io/vickyfyn3/commerce-frontend:${{ github.event.inputs.image_tag }}
-          kubectl rollout status deployment/frontend
+          kubectl rollout restart deployment/frontend
+          kubectl rollout status deployment/frontend --timeout=5m
 
-      - name: Update admin image
+      - name: Restart admin
         run: |
-          kubectl set image deployment/admin \
-            admin=ghcr.io/vickyfyn3/commerce-admin:${{ github.event.inputs.image_tag }}
-          kubectl rollout status deployment/admin
+          kubectl rollout restart deployment/admin
+          kubectl rollout status deployment/admin --timeout=5m
 
       - name: Stamp deployment time
         run: |
           date +%s > ~/.last_deploy_time
-          kubectl annotate deployments --all \
+          kubectl annotate deployments backend frontend admin \
             deploy-time=$(date +%s) \
             deploy-sha=${{ github.event.inputs.image_tag }} \
             --overwrite
 
       - name: Verify deployment
         run: |
+          echo "📦 Current pods:"
           kubectl get pods
           echo "✅ Deployment complete"

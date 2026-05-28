@@ -33,7 +33,9 @@ app.use(cors());
 app.use(requestLogger);
 
 // Health check endpoints for Kubernetes
+// Logged at debug level — won't appear unless LOG_LEVEL=debug
 app.get('/health/live', (req, res) => {
+  logger.debug('Liveness probe hit', { type: 'probe', probe: 'liveness', ip: req.ip });
   res.status(200).json({ status: 'alive', timestamp: new Date().toISOString() });
 });
 
@@ -42,10 +44,13 @@ app.get('/health/ready', async (req, res) => {
     const mongoose = await import('mongoose');
     const dbState = mongoose.default.connection.readyState;
     if (dbState !== 1) {
+      logger.debug('Readiness probe - not ready', { type: 'probe', probe: 'readiness', dbState });
       return res.status(503).json({ status: 'not ready', db: 'disconnected' });
     }
+    logger.debug('Readiness probe - ready', { type: 'probe', probe: 'readiness', dbState });
     res.status(200).json({ status: 'ready', db: 'connected', timestamp: new Date().toISOString() });
   } catch (error) {
+    logger.debug('Readiness probe - error', { type: 'probe', error: error.message });
     res.status(503).json({ status: 'not ready', error: error.message });
   }
 });

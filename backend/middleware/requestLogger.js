@@ -20,6 +20,9 @@ const maskSensitiveData = (obj) => {
 };
 
 const requestLogger = (req, res, next) => {
+  // Skip health check endpoints — they log themselves at debug level
+  if (req.url.startsWith('/health/')) return next();
+
   const requestId = uuidv4();
   const startTime = Date.now();
 

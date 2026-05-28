@@ -21,3 +21,4 @@ npm-debug.log*
 # Build outputs
 dist/
 build/
+backend/logs/

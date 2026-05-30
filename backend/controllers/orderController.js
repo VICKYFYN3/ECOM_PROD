@@ -7,6 +7,10 @@ import { getOrderConfirmationEmail, getOrderStatusUpdateEmail, getAdminOrderNoti
 import transporter from "../config/nodemailer.js";
 import eventLogger from "../utils/eventLogger.js";
 import logger from "../utils/logger.js";
+import { KEYS, TTL, cacheDel, CHANNELS } from "../utils/cache.js";
+import { publish } from "../utils/pubsub.js";
+import orderQueue from "../queues/orderQueue.js";
+import { sendEmail } from "../queues/emailQueue.js";
 
 const currency = 'ngn'
 const deliveryCharge = 10
@@ -25,8 +29,8 @@ const updateProductStock = async (items, requestId = null) => {
                 ? (product.sizeStock.get(item.size) || 0)
                 : (product.sizeStock?.[item.size] || 0);
             const newSizeStock = Math.max(0, currentSizeStock - item.quantity);
-            const update = { $set: { [`sizeStock.${item.size}`]: newSizeStock } };
-            await productModel.findByIdAndUpdate(item._id, update);
+            await productModel.findByIdAndUpdate(item._id, { $set: { [`sizeStock.${item.size}`]: newSizeStock } });
+
             const updatedProduct = await productModel.findById(item._id);
             let totalStock = 0;
             if (updatedProduct.sizeStock instanceof Map) {
@@ -35,8 +39,13 @@ const updateProductStock = async (items, requestId = null) => {
                 Object.values(updatedProduct.sizeStock).forEach(stock => { totalStock += stock || 0; });
             }
             await productModel.findByIdAndUpdate(item._id, { stockQuantity: totalStock });
-            eventLogger.product.stockUpdated({
-                requestId,
+
+            // Invalidate product cache
+            await cacheDel(KEYS.product(item._id));
+            await cacheDel(KEYS.productList());
+
+            // Publish stock update — all pods invalidate cache immediately
+            await publish(CHANNELS.STOCK_UPDATED, {
                 productId: item._id,
                 productName: product.name,
                 size: item.size,
@@ -44,23 +53,24 @@ const updateProductStock = async (items, requestId = null) => {
                 newStock: newSizeStock,
                 totalStock,
             });
+
+            eventLogger.product.stockUpdated({
+                requestId, productId: item._id, productName: product.name,
+                size: item.size, previousStock: currentSizeStock,
+                newStock: newSizeStock, totalStock,
+            });
+
             if (newSizeStock === 0) {
                 eventLogger.product.lowStock({ requestId, productId: item._id, productName: product.name, size: item.size, stock: 0, alert: 'out_of_stock' });
                 if (process.env.NOTIFY_EMAIL) {
-                    await transporter.sendMail({
-                        from: `"FYN3" <${process.env.EMAIL_USER}>`,
-                        to: process.env.NOTIFY_EMAIL,
-                        html: getStockAlertEmail(product, item.size, newSizeStock, 'out')
-                    }).catch(err => logger.error('Stock alert email failed', { requestId, error: err.message }));
+                    await sendEmail(process.env.NOTIFY_EMAIL, 'Out of Stock Alert', getStockAlertEmail(product, item.size, newSizeStock, 'out'), 'stock_alert')
+                        .catch(err => logger.error('Stock alert email failed', { requestId, error: err.message }));
                 }
             } else if (newSizeStock <= 10) {
                 eventLogger.product.lowStock({ requestId, productId: item._id, productName: product.name, size: item.size, stock: newSizeStock, alert: 'low_stock' });
                 if (process.env.NOTIFY_EMAIL) {
-                    await transporter.sendMail({
-                        from: `"FYN3" <${process.env.EMAIL_USER}>`,
-                        to: process.env.NOTIFY_EMAIL,
-                        html: getStockAlertEmail(product, item.size, newSizeStock, 'low')
-                    }).catch(err => logger.error('Stock alert email failed', { requestId, error: err.message }));
+                    await sendEmail(process.env.NOTIFY_EMAIL, 'Low Stock Alert', getStockAlertEmail(product, item.size, newSizeStock, 'low'), 'stock_alert')
+                        .catch(err => logger.error('Stock alert email failed', { requestId, error: err.message }));
                 }
             }
         }
@@ -80,6 +90,7 @@ const restoreProductStock = async (items, requestId = null) => {
                 : (product.sizeStock?.[item.size] || 0);
             const restoredSizeStock = currentSizeStock + item.quantity;
             await productModel.findByIdAndUpdate(item._id, { $set: { [`sizeStock.${item.size}`]: restoredSizeStock } });
+
             const updatedProduct = await productModel.findById(item._id);
             let totalStock = 0;
             if (updatedProduct.sizeStock instanceof Map) {
@@ -88,6 +99,15 @@ const restoreProductStock = async (items, requestId = null) => {
                 Object.values(updatedProduct.sizeStock).forEach(stock => { totalStock += stock || 0; });
             }
             await productModel.findByIdAndUpdate(item._id, { stockQuantity: totalStock });
+
+            // Invalidate cache and publish
+            await cacheDel(KEYS.product(item._id));
+            await cacheDel(KEYS.productList());
+            await publish(CHANNELS.STOCK_UPDATED, {
+                productId: item._id, size: item.size,
+                newStock: restoredSizeStock, totalStock,
+            });
+
             logger.info('Stock restored', { requestId, productId: item._id, size: item.size, restored: item.quantity });
         }
     } catch (error) {
@@ -115,32 +135,24 @@ const placeOrder = async (req, res) => {
         const { userId, items, amount, address } = req.body;
         await validateStockAvailability(items);
         await updateProductStock(items, requestId);
+
         const orderData = { userId, items, address, amount, paymentMethod: "COD", payment: false };
         const newOrder = new orderModel(orderData);
         await newOrder.save();
+
+        // Clear cart cache
+        await cacheDel(KEYS.cart(userId));
         await userModel.findByIdAndUpdate(userId, { cartData: {} });
+
         eventLogger.order.placed({
-            requestId,
-            orderId: newOrder._id,
-            userId,
-            amount,
-            itemCount: items.length,
-            paymentMethod: 'COD',
+            requestId, orderId: newOrder._id, userId,
+            amount, itemCount: items.length, paymentMethod: 'COD',
             address: { city: address.city, country: address.country },
         });
-        await transporter.sendMail({
-            from: `"FYN3" <${process.env.EMAIL_USER}>`,
-            to: address.email,
-            subject: `Your Order is Confirmed!`,
-            html: getOrderConfirmationEmail(newOrder)
-        }).catch(err => eventLogger.system.emailError({ requestId, error: err.message, type: 'order_confirmation' }));
-        if (process.env.NOTIFY_EMAIL) {
-            await transporter.sendMail({
-                from: `"FYN3" <${process.env.EMAIL_USER}>`,
-                to: process.env.NOTIFY_EMAIL,
-                html: getAdminOrderNotificationEmail(newOrder)
-            }).catch(err => eventLogger.system.emailError({ requestId, error: err.message, type: 'admin_notification' }));
-        }
+
+        // Queue order confirmation (async — user gets instant response)
+        await orderQueue.add({ type: 'order_confirmed', orderId: newOrder._id, userId });
+
         res.json({ success: true, message: "Order Placed" });
     } catch (error) {
         logger.error('COD order failed', { requestId, error: error.message, userId: req.body?.userId });
@@ -155,10 +167,13 @@ const placeOrderStripe = async (req, res) => {
         const { origin } = req.headers;
         await validateStockAvailability(items);
         await updateProductStock(items, requestId);
+
         const orderData = { userId, items, address, amount, paymentMethod: "Stripe", payment: false };
         const newOrder = new orderModel(orderData);
         await newOrder.save();
+
         eventLogger.order.paymentInitiated({ requestId, orderId: newOrder._id, userId, amount, provider: 'stripe' });
+
         const line_items = items.map((item) => ({
             price_data: { currency, product_data: { name: item.name }, unit_amount: item.price * 100 },
             quantity: item.quantity
@@ -167,12 +182,13 @@ const placeOrderStripe = async (req, res) => {
             price_data: { currency, product_data: { name: 'Delivery Charges' }, unit_amount: deliveryCharge * 100 },
             quantity: 1
         });
+
         const session = await stripe.checkout.sessions.create({
             success_url: `${origin}/verify?success=true&orderId=${newOrder._id}`,
             cancel_url: `${origin}/verify?success=false&orderId=${newOrder._id}`,
-            line_items,
-            mode: 'payment',
+            line_items, mode: 'payment',
         });
+
         res.json({ success: true, session_url: session.url });
     } catch (error) {
         eventLogger.order.paymentFailed({ requestId, error: error.message, provider: 'stripe', userId: req.body?.userId });
@@ -188,20 +204,14 @@ const verifyStripe = async (req, res) => {
             await orderModel.findByIdAndUpdate(orderId, { payment: true });
             const order = await orderModel.findById(orderId);
             eventLogger.order.paymentSuccess({ requestId, orderId, userId, provider: 'stripe', amount: order.amount });
-            await transporter.sendMail({
-                from: `"FYN3" <${process.env.EMAIL_USER}>`,
-                to: order.address.email,
-                subject: `Your Order is Confirmed!`,
-                html: getOrderConfirmationEmail(order)
-            }).catch(err => eventLogger.system.emailError({ requestId, error: err.message }));
-            if (process.env.NOTIFY_EMAIL) {
-                await transporter.sendMail({
-                    from: `"FYN3" <${process.env.EMAIL_USER}>`,
-                    to: process.env.NOTIFY_EMAIL,
-                    html: getAdminOrderNotificationEmail(order)
-                }).catch(err => eventLogger.system.emailError({ requestId, error: err.message }));
-            }
+
+            // Clear cart cache
+            await cacheDel(KEYS.cart(userId));
             await userModel.findByIdAndUpdate(userId, { cartData: {} });
+
+            // Queue order confirmation
+            await orderQueue.add({ type: 'order_confirmed', orderId, userId });
+
             res.json({ success: true });
         } else {
             const order = await orderModel.findById(orderId);
@@ -223,17 +233,13 @@ const placeOrderPaystack = async (req, res) => {
         const { origin } = req.headers;
         await validateStockAvailability(items);
         await updateProductStock(items, requestId);
+
         const orderData = { userId, items, address, amount, paymentMethod: "Paystack", payment: false };
         const newOrder = new orderModel(orderData);
         await newOrder.save();
+
         eventLogger.order.paymentInitiated({ requestId, orderId: newOrder._id, userId, amount, provider: 'paystack' });
-        if (process.env.NOTIFY_EMAIL) {
-            await transporter.sendMail({
-                from: `"FYN3" <${process.env.EMAIL_USER}>`,
-                to: process.env.NOTIFY_EMAIL,
-                html: getAdminOrderNotificationEmail(newOrder)
-            }).catch(err => eventLogger.system.emailError({ requestId, error: err.message }));
-        }
+
         const transaction = await paystack.transaction.initialize({
             amount: (amount + deliveryCharge) * 100,
             email: address.email,
@@ -242,6 +248,7 @@ const placeOrderPaystack = async (req, res) => {
             currency: currency.toUpperCase(),
             metadata: { orderId: newOrder._id.toString(), userId }
         });
+
         res.json({ success: true, authorization_url: transaction.data.authorization_url });
     } catch (error) {
         eventLogger.order.paymentFailed({ requestId, error: error.message, provider: 'paystack', userId: req.body?.userId });
@@ -258,20 +265,14 @@ const verifyPaystack = async (req, res) => {
             await orderModel.findByIdAndUpdate(orderId, { payment: true });
             const order = await orderModel.findById(orderId);
             eventLogger.order.paymentSuccess({ requestId, orderId, provider: 'paystack', amount: order.amount, reference });
-            await transporter.sendMail({
-                from: `"FYN3" <${process.env.EMAIL_USER}>`,
-                to: order.address.email,
-                subject: `Your Order is Confirmed!`,
-                html: getOrderConfirmationEmail(order)
-            }).catch(err => eventLogger.system.emailError({ requestId, error: err.message }));
-            if (process.env.NOTIFY_EMAIL) {
-                await transporter.sendMail({
-                    from: `"FYN3" <${process.env.EMAIL_USER}>`,
-                    to: process.env.NOTIFY_EMAIL,
-                    html: getAdminOrderNotificationEmail(order)
-                }).catch(err => eventLogger.system.emailError({ requestId, error: err.message }));
-            }
+
+            // Clear cart cache
+            await cacheDel(KEYS.cart(order.userId));
             await userModel.findByIdAndUpdate(order.userId, { cartData: {} });
+
+            // Queue order confirmation
+            await orderQueue.add({ type: 'order_confirmed', orderId, userId: order.userId });
+
             res.json({ success: true });
         } else {
             const order = await orderModel.findById(orderId);
@@ -316,6 +317,7 @@ const updateStatus = async (req, res) => {
         const { orderId, status } = req.body;
         await orderModel.findByIdAndUpdate(orderId, { status });
         eventLogger.order.statusUpdated({ requestId, orderId, status, updatedBy: req.body?.adminId || 'admin' });
+
         const order = await orderModel.findById(orderId);
         if (order) {
             const emailHtml = getOrderStatusUpdateEmail(order);
@@ -324,12 +326,8 @@ const updateStatus = async (req, res) => {
                 if (emailHtml.includes("<title>")) {
                     subject = emailHtml.split('<title>')[1].split('</title>')[0];
                 }
-                await transporter.sendMail({
-                    from: `"FYN3" <${process.env.EMAIL_USER}>`,
-                    to: order.address.email,
-                    subject,
-                    html: emailHtml
-                }).catch(err => eventLogger.system.emailError({ requestId, error: err.message, type: 'status_update' }));
+                await sendEmail(order.address.email, subject, emailHtml, 'status_update')
+                    .catch(err => eventLogger.system.emailError({ requestId, error: err.message, type: 'status_update' }));
             }
         }
         res.json({ success: true, message: "Status Updated" });

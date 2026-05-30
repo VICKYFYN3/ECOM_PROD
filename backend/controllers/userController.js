@@ -11,6 +11,9 @@ import { getEmailTemplate } from "../utils/emailTemplates.js";
 import { getDeviceInfo } from "../utils/deviceInfo.js";
 import eventLogger from "../utils/eventLogger.js";
 import logger from "../utils/logger.js";
+import { redis } from "../config/redis.js";
+import { KEYS, TTL, cacheGet, cacheSet, cacheDel } from "../utils/cache.js";
+import { sendEmail } from "../queues/emailQueue.js";
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -26,6 +29,8 @@ const createSession = async (userId, token, req) => {
     const deviceInfo = getDeviceInfo(req.headers['user-agent'], req.ip);
     const session = new sessionModel({ userId, token, deviceInfo });
     await session.save();
+    // Cache session in Redis immediately
+    await cacheSet(KEYS.session(token), session, TTL.SESSION);
     return session;
 };
 
@@ -70,20 +75,27 @@ const forgotPassword = async (req, res) => {
         const { email } = req.body;
         const user = await userModel.findOne({ email });
         if (!user) {
-            logger.warn('Password reset requested for non-existent email', { requestId, email, ip: req.ip });
+            logger.warn('Password reset for non-existent email', { requestId, email, ip: req.ip });
             return res.status(404).json({ success: false, message: "User not found" });
         }
         const resetToken = generateResetToken();
-        const tokenExpiry = new Date(Date.now() + 60000);
-        user.resetToken = resetToken;
-        user.resetTokenExpiry = tokenExpiry;
-        await user.save();
+
+        // Store reset token in Redis with 60 second TTL (auto-expires)
+        await cacheSet(KEYS.resetToken(email), resetToken, TTL.RESET_TOKEN);
+
+        // Remove from MongoDB (no longer needed there)
+        await userModel.findByIdAndUpdate(user._id, {
+            $unset: { resetToken: 1, resetTokenExpiry: 1 }
+        });
+
         eventLogger.auth.passwordReset({ requestId, userId: user._id, email, ip: req.ip, stage: 'requested' });
+
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
         });
-        const mailOptions = {
+
+        await transporter.sendMail({
             from: `"FYN3" <${process.env.EMAIL_USER}>`,
             to: email,
             subject: 'Password Reset Code - FYN3',
@@ -104,8 +116,7 @@ const forgotPassword = async (req, res) => {
                 <p style="color:#666;">If you didn't request this, please ignore this email.</p>
                 </div></div></body></html>
             `,
-        };
-        await transporter.sendMail(mailOptions);
+        });
         res.json({ success: true, message: "Reset code sent to your email" });
     } catch (error) {
         logger.error('Forgot password failed', { requestId, error: error.message });
@@ -116,24 +127,37 @@ const forgotPassword = async (req, res) => {
 const resetPassword = async (req, res) => {
     const requestId = req.requestId;
     try {
-        const { token, newPassword } = req.body;
-        if (!token || !newPassword) {
-            return res.status(400).json({ success: false, message: "Token and new password are required" });
+        const { token, newPassword, email } = req.body;
+        if (!token || !newPassword || !email) {
+            return res.status(400).json({ success: false, message: "Email, token and new password are required" });
         }
-        const user = await userModel.findOne({ resetToken: token, resetTokenExpiry: { $gt: Date.now() } });
-        if (!user) {
-            logger.warn('Invalid or expired reset token used', { requestId, ip: req.ip });
+
+        // Check Redis for reset token
+        const storedToken = await cacheGet(KEYS.resetToken(email));
+        if (!storedToken) {
+            logger.warn('Expired or invalid reset token', { requestId, email, ip: req.ip });
             return res.status(400).json({ success: false, message: "Invalid or expired reset token" });
         }
+        if (storedToken !== token) {
+            logger.warn('Wrong reset token', { requestId, email, ip: req.ip });
+            return res.status(400).json({ success: false, message: "Invalid or expired reset token" });
+        }
+
+        const user = await userModel.findOne({ email });
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
         if (newPassword.length < 8) {
             return res.status(400).json({ success: false, message: "Password must be at least 8 characters" });
         }
+
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(newPassword, salt);
         user.password = hashedPassword;
-        user.resetToken = undefined;
-        user.resetTokenExpiry = undefined;
         await user.save();
+
+        // Delete reset token from Redis
+        await cacheDel(KEYS.resetToken(email));
+
         eventLogger.auth.passwordReset({ requestId, userId: user._id, ip: req.ip, stage: 'completed' });
         res.json({ success: true, message: "Password updated successfully" });
     } catch (error) {
@@ -177,7 +201,7 @@ const registerUser = async (req, res) => {
         const { name, email, password } = req.body;
         const exists = await userModel.findOne({ email });
         if (exists) {
-            logger.warn('Registration attempted with existing email', { requestId, email, ip: req.ip });
+            logger.warn('Registration with existing email', { requestId, email, ip: req.ip });
             return res.status(400).json({ success: false, message: "User already exists" });
         }
         if (!validator.isEmail(email)) {
@@ -189,27 +213,32 @@ const registerUser = async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
         const verificationCode = generateResetToken();
-        const verificationCodeExpiry = new Date(Date.now() + 20 * 60 * 1000);
-        const verificationCodeResendAt = new Date(Date.now() + 4 * 60 * 1000);
+
+        // Store OTP in Redis with TTL (auto-expires, no MongoDB cleanup needed)
+        await cacheSet(KEYS.otp(email), {
+            code: verificationCode,
+            resendAt: Date.now() + 4 * 60 * 1000,
+        }, TTL.OTP);
+
         const newUser = new userModel({
-            name, email, password: hashedPassword,
-            isVerified: false, verificationCode,
-            verificationCodeExpiry, verificationCodeResendAt
+            name, email,
+            password: hashedPassword,
+            isVerified: false,
         });
         await newUser.save();
+
         eventLogger.auth.registered({ requestId, userId: newUser._id, email, method: 'email', ip: req.ip });
+
         const subject = 'Verify Your Email - FYN3';
         const message = `<div style="text-align:center;">
             <h2>Welcome, ${name}!</h2>
-            <p>Thank you for signing up. Please verify your email address using the code below:</p>
+            <p>Thank you for signing up. Please verify your email using the code below:</p>
             <div style="font-size:32px;font-weight:bold;letter-spacing:8px;margin:20px 0;">${verificationCode}</div>
             <p>This code will expire in 20 minutes.</p>
         </div>`;
-        await transporter.sendMail({
-            from: `"FYN3" <${process.env.EMAIL_USER}>`,
-            to: email, subject,
-            html: getEmailTemplate(subject, message)
-        }).catch(err => eventLogger.system.emailError({ requestId, error: err.message, type: 'verification' }));
+
+        await sendEmail(email, subject, getEmailTemplate(subject, message), 'verification');
+
         res.status(201).json({ success: true, message: "Verification code sent to your email. Please verify to complete registration." });
     } catch (error) {
         logger.error('Registration failed', { requestId, error: error.message });
@@ -224,24 +253,26 @@ const verifyEmail = async (req, res) => {
         const user = await userModel.findOne({ email });
         if (!user) return res.status(404).json({ success: false, message: "User not found" });
         if (user.isVerified) return res.status(400).json({ success: false, message: "Email already verified" });
-        if (!user.verificationCode || !user.verificationCodeExpiry) {
-            return res.status(400).json({ success: false, message: "No verification code found. Please request a new one." });
+
+        // Check OTP in Redis
+        const otpData = await cacheGet(KEYS.otp(email));
+        if (!otpData) {
+            return res.status(400).json({ success: false, message: "Verification code expired. Please request a new one." });
         }
-        if (user.verificationCode !== code) {
-            logger.warn('Invalid verification code used', { requestId, email, ip: req.ip });
+        if (otpData.code !== code) {
+            logger.warn('Invalid verification code', { requestId, email, ip: req.ip });
             return res.status(400).json({ success: false, message: "Invalid verification code" });
         }
-        if (user.verificationCodeExpiry < new Date()) {
-            return res.status(400).json({ success: false, message: "Verification code expired" });
-        }
+
         user.isVerified = true;
-        user.verificationCode = undefined;
-        user.verificationCodeExpiry = undefined;
-        user.verificationCodeResendAt = undefined;
         await user.save();
+
+        // Delete OTP from Redis
+        await cacheDel(KEYS.otp(email));
+
         const token = createToken(user._id);
         await createSession(user._id, token, req);
-        logger.info('Email verified successfully', { requestId, userId: user._id, email, ip: req.ip });
+        logger.info('Email verified', { requestId, userId: user._id, email, ip: req.ip });
         res.json({ success: true, token, message: "Email verified successfully" });
     } catch (error) {
         logger.error('Email verification failed', { requestId, error: error.message });
@@ -256,18 +287,24 @@ const resendVerificationCode = async (req, res) => {
         const user = await userModel.findOne({ email });
         if (!user) return res.status(404).json({ success: false, message: "User not found" });
         if (user.isVerified) return res.status(400).json({ success: false, message: "Email already verified" });
-        if (user.verificationCodeResendAt && user.verificationCodeResendAt > new Date()) {
-            const wait = Math.ceil((user.verificationCodeResendAt - new Date()) / 1000);
+
+        // Check resend cooldown in Redis
+        const existing = await cacheGet(KEYS.otp(email));
+        if (existing && existing.resendAt > Date.now()) {
+            const wait = Math.ceil((existing.resendAt - Date.now()) / 1000);
             return res.status(429).json({ success: false, message: `Please wait ${wait} seconds before requesting another code.` });
         }
+
         const verificationCode = generateResetToken();
-        const verificationCodeExpiry = new Date(Date.now() + 20 * 60 * 1000);
-        const verificationCodeResendAt = new Date(Date.now() + 4 * 60 * 1000);
-        user.verificationCode = verificationCode;
-        user.verificationCodeExpiry = verificationCodeExpiry;
-        user.verificationCodeResendAt = verificationCodeResendAt;
-        await user.save();
+
+        // Store new OTP in Redis
+        await cacheSet(KEYS.otp(email), {
+            code: verificationCode,
+            resendAt: Date.now() + 4 * 60 * 1000,
+        }, TTL.OTP);
+
         logger.info('Verification code resent', { requestId, userId: user._id, email, ip: req.ip });
+
         const subject = 'Verify Your Email - FYN3';
         const message = `<div style="text-align:center;">
             <h2>Hello, ${user.name}!</h2>
@@ -275,11 +312,8 @@ const resendVerificationCode = async (req, res) => {
             <div style="font-size:32px;font-weight:bold;letter-spacing:8px;margin:20px 0;">${verificationCode}</div>
             <p>This code will expire in 20 minutes.</p>
         </div>`;
-        await transporter.sendMail({
-            from: `"FYN3" <${process.env.EMAIL_USER}>`,
-            to: email, subject,
-            html: getEmailTemplate(subject, message)
-        }).catch(err => eventLogger.system.emailError({ requestId, error: err.message, type: 'resend_verification' }));
+
+        await sendEmail(email, subject, getEmailTemplate(subject, message), 'resend_verification');
         res.json({ success: true, message: "Verification code resent to your email." });
     } catch (error) {
         logger.error('Resend verification failed', { requestId, error: error.message });
@@ -296,7 +330,7 @@ const adminLogin = async (req, res) => {
             eventLogger.admin.loggedIn({ requestId, email, ip: req.ip });
             res.json({ success: true, token });
         } else {
-            logger.warn('Failed admin login attempt', { requestId, email, ip: req.ip });
+            logger.warn('Failed admin login', { requestId, email, ip: req.ip });
             res.status(401).json({ success: false, message: "Invalid credentials" });
         }
     } catch (error) {
@@ -354,13 +388,13 @@ const changePassword = async (req, res) => {
         if (!user) return res.status(404).json({ success: false, message: 'User not found' });
         const isMatch = await bcrypt.compare(currentPassword, user.password);
         if (!isMatch) {
-            logger.warn('Failed password change - wrong current password', { requestId, userId: req.body.userId, ip: req.ip });
+            logger.warn('Wrong current password', { requestId, userId: req.body.userId, ip: req.ip });
             return res.status(401).json({ success: false, message: 'Current password is incorrect' });
         }
         if (newPassword.length < 8) return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
         user.password = await bcrypt.hash(newPassword, 10);
         await user.save();
-        logger.info('Password changed successfully', { requestId, userId: req.body.userId, ip: req.ip });
+        logger.info('Password changed', { requestId, userId: req.body.userId, ip: req.ip });
         res.json({ success: true, message: 'Password updated successfully' });
     } catch (error) {
         logger.error('Change password failed', { requestId, error: error.message });
@@ -373,6 +407,10 @@ const deactivateAccount = async (req, res) => {
     try {
         const user = await userModel.findByIdAndDelete(req.body.userId);
         if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+        // Clear all sessions from Redis
+        await sessionModel.find({ userId: req.body.userId }).then(async (sessions) => {
+            for (const s of sessions) await cacheDel(KEYS.session(s.token));
+        });
         logger.info('Account deactivated', { requestId, userId: req.body.userId, email: user.email, ip: req.ip });
         res.json({ success: true, message: 'Account deleted successfully' });
     } catch (error) {
@@ -388,7 +426,7 @@ const subscribeToNewsletter = async (req, res) => {
         if (!user) return res.status(404).json({ success: false, message: "User not found" });
         user.subscribed = true;
         await user.save();
-        logger.info('User subscribed to newsletter', { requestId, userId: req.body.userId });
+        logger.info('Newsletter subscribed', { requestId, userId: req.body.userId });
         res.json({ success: true, message: "Subscribed to newsletter successfully" });
     } catch (error) {
         logger.error('Newsletter subscription failed', { requestId, error: error.message });
@@ -407,17 +445,14 @@ const sendNewsletter = async (req, res) => {
         let sent = 0, failed = 0;
         for (const user of subscribedUsers) {
             try {
-                await transporter.sendMail({
-                    from: `"FYN3" <${process.env.EMAIL_USER}>`,
-                    to: user.email, subject, html: newsletterHtml,
-                });
+                await sendEmail(user.email, subject, newsletterHtml, 'newsletter');
                 sent++;
             } catch (error) {
                 failed++;
                 eventLogger.system.emailError({ requestId, error: error.message, type: 'newsletter', recipient: user.email });
             }
         }
-        logger.info('Newsletter sent', { requestId, total: subscribedUsers.length, sent, failed });
+        logger.info('Newsletter queued', { requestId, total: subscribedUsers.length, sent, failed });
         res.json({ success: true, message: 'Newsletter sent successfully' });
     } catch (error) {
         logger.error('Newsletter send failed', { requestId, error: error.message });
@@ -479,6 +514,11 @@ const signOutAllDevices = async (req, res) => {
     const requestId = req.requestId;
     try {
         const userId = req.body.userId;
+        const sessions = await sessionModel.find({ userId, isActive: true });
+        // Clear all sessions from Redis
+        for (const session of sessions) {
+            await cacheDel(KEYS.session(session.token));
+        }
         await sessionModel.updateMany({ userId, isActive: true }, { isActive: false });
         eventLogger.auth.logout({ requestId, userId, type: 'all_devices', ip: req.ip });
         res.json({ success: true, message: 'Signed out from all devices successfully' });
@@ -498,6 +538,8 @@ const signOutDevice = async (req, res) => {
             { isActive: false }, { new: true }
         );
         if (!session) return res.status(404).json({ success: false, message: 'Session not found' });
+        // Clear session from Redis
+        await cacheDel(KEYS.session(session.token));
         eventLogger.auth.logout({ requestId, userId, sessionId, type: 'single_device', ip: req.ip });
         res.json({ success: true, message: 'Signed out from device successfully' });
     } catch (error) {

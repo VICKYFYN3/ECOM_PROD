@@ -1,62 +1,55 @@
 import winston from 'winston';
-import DailyRotateFile from 'winston-daily-rotate-file';
+import os from 'os';
 
-const { combine, timestamp, json, colorize, printf } = winston.format;
+const { combine, timestamp, json, printf } = winston.format;
 
-const consoleFormat = printf(({ level, message, timestamp, ...meta }) => {
-  const metaStr = Object.keys(meta).length ? JSON.stringify(meta, null, 2) : '';
-  return `${timestamp} [${level.toUpperCase()}] ${message} ${metaStr}`;
-});
+// Pod identity — injected by Kubernetes downward API
+const podName    = process.env.HOSTNAME    || os.hostname();
+const nodeName   = process.env.NODE_NAME   || 'local';
+const podIp      = process.env.POD_IP      || 'unknown';
+const appVersion = process.env.APP_VERSION || '1.0.0';
 
+// Log levels
 const levels = {
   error: 0,
-  warn: 1,
-  info: 2,
-  http: 3,
+  warn:  1,
+  info:  2,
+  http:  3,
   debug: 4,
+};
+
+winston.addColors({
+  error: 'red',
+  warn:  'yellow',
+  info:  'green',
+  http:  'magenta',
+  debug: 'white',
+});
+
+// Base metadata stamped on every single log
+const baseMeta = {
+  service:     'commerce-backend',
+  version:     appVersion,
+  environment: process.env.NODE_ENV || 'production',
+  pod:         podName,
+  node:        nodeName,
+  podIp:       podIp,
 };
 
 const logger = winston.createLogger({
   levels,
   level: process.env.LOG_LEVEL || 'http',
-  format: combine(
-    timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
-    json()
-  ),
-  defaultMeta: {
-    service: 'commerce-backend',
-    environment: process.env.NODE_ENV || 'production',
-  },
+  defaultMeta: baseMeta,
+
+  // Single stdout transport — JSON format
+  // kubectl logs reads this
+  // Promtail will collect this → Loki → Grafana
   transports: [
     new winston.transports.Console({
       format: combine(
-        colorize(),
-        timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-        consoleFormat
+        timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
+        json()
       ),
-    }),
-    new DailyRotateFile({
-      filename: 'logs/error-%DATE%.log',
-      datePattern: 'YYYY-MM-DD',
-      level: 'error',
-      maxSize: '20m',
-      maxFiles: '30d',
-      zippedArchive: true,
-    }),
-    new DailyRotateFile({
-      filename: 'logs/combined-%DATE%.log',
-      datePattern: 'YYYY-MM-DD',
-      maxSize: '20m',
-      maxFiles: '30d',
-      zippedArchive: true,
-    }),
-    new DailyRotateFile({
-      filename: 'logs/http-%DATE%.log',
-      datePattern: 'YYYY-MM-DD',
-      level: 'http',
-      maxSize: '20m',
-      maxFiles: '30d',
-      zippedArchive: true,
     }),
   ],
 });

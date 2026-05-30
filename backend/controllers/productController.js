@@ -2,6 +2,8 @@ import { v2 as cloudinary } from 'cloudinary';
 import productModel from '../models/productModel.js';
 import eventLogger from '../utils/eventLogger.js';
 import logger from '../utils/logger.js';
+import { KEYS, TTL, cacheGet, cacheSet, cacheDel, CHANNELS } from '../utils/cache.js';
+import { publish } from '../utils/pubsub.js';
 
 const addProduct = async (req, res) => {
     const requestId = req.requestId;
@@ -46,14 +48,20 @@ const addProduct = async (req, res) => {
         const product = new productModel(productData);
         await product.save();
 
-        eventLogger.product.added({
-            requestId,
+        // Invalidate product list cache — new product added
+        await cacheDel(KEYS.productList());
+
+        // Publish product added event
+        await publish(CHANNELS.PRODUCT_UPDATED, {
+            action: 'added',
             productId: product._id,
-            name, category, subCategory,
-            price: Number(price),
-            totalStock: totalStockQuantity,
-            imageCount: imagesUrl.length,
-            addedBy: 'admin',
+            name,
+        });
+
+        eventLogger.product.added({
+            requestId, productId: product._id, name, category,
+            subCategory, price: Number(price), totalStock: totalStockQuantity,
+            imageCount: imagesUrl.length, addedBy: 'admin',
         });
 
         res.json({ success: true, message: "Product added" });
@@ -66,6 +74,14 @@ const addProduct = async (req, res) => {
 const listProducts = async (req, res) => {
     const requestId = req.requestId;
     try {
+        // Check cache first
+        const cached = await cacheGet(KEYS.productList());
+        if (cached) {
+            logger.debug('Product list served from cache', { requestId });
+            return res.json({ success: true, products: cached });
+        }
+
+        // Cache miss — fetch from MongoDB
         const products = await productModel.find({});
         const formattedProducts = products.map(product => ({
             ...product.toObject(),
@@ -73,6 +89,10 @@ const listProducts = async (req, res) => {
                 ? Object.fromEntries(product.sizeStock)
                 : product.sizeStock || {}
         }));
+
+        // Store in cache
+        await cacheSet(KEYS.productList(), formattedProducts, TTL.PRODUCT_LIST);
+
         res.json({ success: true, products: formattedProducts });
     } catch (error) {
         logger.error('List products failed', { requestId, error: error.message });
@@ -84,11 +104,20 @@ const removeProduct = async (req, res) => {
     const requestId = req.requestId;
     try {
         const product = await productModel.findByIdAndDelete(req.body.id);
-        eventLogger.product.deleted({
-            requestId,
+
+        // Invalidate caches
+        await cacheDel(KEYS.productList());
+        await cacheDel(KEYS.product(req.body.id));
+
+        // Publish product deleted event
+        await publish(CHANNELS.PRODUCT_DELETED, {
             productId: req.body.id,
             productName: product?.name,
-            deletedBy: 'admin',
+        });
+
+        eventLogger.product.deleted({
+            requestId, productId: req.body.id,
+            productName: product?.name, deletedBy: 'admin',
         });
         res.json({ success: true, message: "product removed" });
     } catch (error) {
@@ -101,17 +130,30 @@ const singleProduct = async (req, res) => {
     const requestId = req.requestId;
     try {
         const { productId } = req.body;
+
+        // Check cache first
+        const cached = await cacheGet(KEYS.product(productId));
+        if (cached) {
+            logger.debug('Single product served from cache', { requestId, productId });
+            return res.json({ success: true, product: cached });
+        }
+
         const product = await productModel.findById(productId);
         if (!product) {
             logger.warn('Product not found', { requestId, productId });
             return res.json({ success: false, message: 'Product not found' });
         }
+
         const formattedProduct = {
             ...product.toObject(),
             sizeStock: product.sizeStock instanceof Map
                 ? Object.fromEntries(product.sizeStock)
                 : product.sizeStock || {}
         };
+
+        // Cache single product
+        await cacheSet(KEYS.product(productId), formattedProduct, TTL.SINGLE_PRODUCT);
+
         res.json({ success: true, product: formattedProduct });
     } catch (error) {
         logger.error('Get single product failed', { requestId, error: error.message });
@@ -124,13 +166,13 @@ const updateStock = async (req, res) => {
     try {
         const { productId, quantity, size } = req.body;
         if (!productId) return res.json({ success: false, message: "Product ID is required" });
-        if (!size) return res.json({ success: false, message: "Size parameter is required for stock updates." });
+        if (!size) return res.json({ success: false, message: "Size parameter is required." });
         if (quantity === undefined || quantity === null || isNaN(quantity)) return res.json({ success: false, message: "Valid quantity is required" });
 
         const product = await productModel.findById(productId);
         if (!product) return res.json({ success: false, message: "Product not found" });
         if (!product.sizes.includes(size)) {
-            return res.json({ success: false, message: `Size ${size} is not available for this product. Available sizes: ${product.sizes.join(', ')}` });
+            return res.json({ success: false, message: `Size ${size} is not available. Available: ${product.sizes.join(', ')}` });
         }
 
         let currentSizeStock = product.sizeStock instanceof Map
@@ -139,7 +181,7 @@ const updateStock = async (req, res) => {
 
         const newSizeStock = currentSizeStock + parseInt(quantity);
         if (newSizeStock < 0) {
-            return res.json({ success: false, message: `Cannot reduce stock for size ${size} below zero. Current stock: ${currentSizeStock}` });
+            return res.json({ success: false, message: `Cannot reduce stock below zero. Current: ${currentSizeStock}` });
         }
 
         await productModel.findByIdAndUpdate(productId, { $set: { [`sizeStock.${size}`]: newSizeStock } });
@@ -152,16 +194,24 @@ const updateStock = async (req, res) => {
         }
         await productModel.findByIdAndUpdate(productId, { stockQuantity: totalStock });
 
-        eventLogger.product.stockUpdated({
-            requestId,
+        // Invalidate caches
+        await cacheDel(KEYS.product(productId));
+        await cacheDel(KEYS.productList());
+
+        // Publish stock update — all pods invalidate their cache
+        await publish(CHANNELS.STOCK_UPDATED, {
             productId,
             productName: product.name,
             size,
             previousStock: currentSizeStock,
             newStock: newSizeStock,
-            change: parseInt(quantity),
             totalStock,
-            updatedBy: 'admin',
+        });
+
+        eventLogger.product.stockUpdated({
+            requestId, productId, productName: product.name, size,
+            previousStock: currentSizeStock, newStock: newSizeStock,
+            change: parseInt(quantity), totalStock, updatedBy: 'admin',
         });
 
         if (newSizeStock === 0) {
@@ -176,14 +226,10 @@ const updateStock = async (req, res) => {
             : finalProduct.sizeStock || {};
 
         res.json({
-            success: true,
-            message: `Stock updated for size ${size}`,
-            stockQuantity: totalStock,
-            sizeStock: formattedSizeStock,
-            updatedSize: size,
-            previousStock: currentSizeStock,
-            newSizeStock,
-            changeAmount: parseInt(quantity)
+            success: true, message: `Stock updated for size ${size}`,
+            stockQuantity: totalStock, sizeStock: formattedSizeStock,
+            updatedSize: size, previousStock: currentSizeStock,
+            newSizeStock, changeAmount: parseInt(quantity)
         });
     } catch (error) {
         logger.error('Update stock failed', { requestId, error: error.message });
@@ -241,12 +287,20 @@ const updateProduct = async (req, res) => {
 
         const updatedProduct = await productModel.findByIdAndUpdate(productId, updateData, { new: true });
 
-        eventLogger.product.updated({
-            requestId,
+        // Invalidate caches
+        await cacheDel(KEYS.product(productId));
+        await cacheDel(KEYS.productList());
+
+        // Publish product updated — all pods invalidate cache
+        await publish(CHANNELS.PRODUCT_UPDATED, {
+            action: 'updated',
             productId,
             productName: name,
-            updatedFields: Object.keys(updateData),
-            updatedBy: 'admin',
+        });
+
+        eventLogger.product.updated({
+            requestId, productId, productName: name,
+            updatedFields: Object.keys(updateData), updatedBy: 'admin',
         });
 
         const formattedProduct = {

@@ -1,5 +1,6 @@
 import userModel from "../models/userModel.js";
 import logger from "../utils/logger.js";
+import { KEYS, TTL, cacheGet, cacheSet, cacheDel } from "../utils/cache.js";
 
 const addToCart = async (req, res) => {
     const requestId = req.requestId;
@@ -7,6 +8,7 @@ const addToCart = async (req, res) => {
         const { userId, itemId, size } = req.body;
         const userData = await userModel.findById(userId);
         let cartData = await userData.cartData;
+
         if (cartData[itemId]) {
             if (cartData[itemId][size]) {
                 cartData[itemId][size] += 1;
@@ -17,7 +19,12 @@ const addToCart = async (req, res) => {
             cartData[itemId] = {};
             cartData[itemId][size] = 1;
         }
+
         await userModel.findByIdAndUpdate(userId, { cartData });
+
+        // Update cart cache
+        await cacheSet(KEYS.cart(userId), cartData, TTL.CART);
+
         logger.info('Item added to cart', { requestId, userId, itemId, size, quantity: cartData[itemId][size] });
         res.json({ success: true, message: 'Added to Cart' });
     } catch (error) {
@@ -34,6 +41,10 @@ const updateCart = async (req, res) => {
         let cartData = await userData.cartData;
         cartData[itemId][size] = quantity;
         await userModel.findByIdAndUpdate(userId, { cartData });
+
+        // Update cart cache
+        await cacheSet(KEYS.cart(userId), cartData, TTL.CART);
+
         logger.info('Cart updated', { requestId, userId, itemId, size, quantity });
         res.json({ success: true, message: "Cart Updated" });
     } catch (error) {
@@ -46,8 +57,21 @@ const getUserCart = async (req, res) => {
     const requestId = req.requestId;
     try {
         const { userId } = req.body;
+
+        // Check cache first
+        const cached = await cacheGet(KEYS.cart(userId));
+        if (cached) {
+            logger.debug('Cart served from cache', { requestId, userId });
+            return res.json({ success: true, cartData: cached });
+        }
+
+        // Cache miss — fetch from MongoDB
         const userData = await userModel.findById(userId);
         let cartData = await userData.cartData;
+
+        // Cache cart
+        await cacheSet(KEYS.cart(userId), cartData, TTL.CART);
+
         res.json({ success: true, cartData });
     } catch (error) {
         logger.error('Get cart failed', { requestId, error: error.message });
@@ -61,12 +85,17 @@ const removeFromCart = async (req, res) => {
         const { userId, itemId, size } = req.body;
         const userData = await userModel.findById(userId);
         let cartData = userData.cartData;
+
         if (cartData[itemId] && cartData[itemId][size]) {
             delete cartData[itemId][size];
             if (Object.keys(cartData[itemId]).length === 0) {
                 delete cartData[itemId];
             }
             await userModel.findByIdAndUpdate(userId, { cartData });
+
+            // Update cart cache
+            await cacheSet(KEYS.cart(userId), cartData, TTL.CART);
+
             logger.info('Item removed from cart', { requestId, userId, itemId, size });
             res.json({ success: true, message: "Item removed from cart" });
         } else {

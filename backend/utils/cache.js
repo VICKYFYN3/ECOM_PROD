@@ -6,21 +6,25 @@ export const TTL = {
   SESSION:        60 * 60 * 24 * 7,  // 7 days
   OTP:            60 * 20,            // 20 minutes
   RESET_TOKEN:    60,                 // 60 seconds
-  PRODUCT_LIST:   60 * 10,           // 10 minutes
-  SINGLE_PRODUCT: 60 * 10,           // 10 minutes
-  CART:           60 * 60 * 24,      // 24 hours
-  RATE_LIMIT:     60 * 15,           // 15 minutes
+  PRODUCT_LIST:   60 * 10,            // 10 minutes
+  SINGLE_PRODUCT: 60 * 10,            // 10 minutes
+  CART:           60 * 60 * 24,        // 24 hours
+  PROFILE:        60 * 5,             // 5 minutes
+  WISHLIST:       60 * 5,             // 5 minutes
+  RATE_LIMIT:     60 * 15,            // 15 minutes
 };
 
 // Cache keys
 export const KEYS = {
-  session:       (token) => `session:${token}`,
-  otp:           (email) => `otp:${email}`,
-  resetToken:    (email) => `reset:${email}`,
-  productList:   ()      => `products:list`,
-  product:       (id)    => `product:${id}`,
-  cart:          (userId)=> `cart:${userId}`,
-  rateLimit:     (key)   => `ratelimit:${key}`,
+  session:       (token)  => `session:${token}`,
+  otp:           (email)  => `otp:${email}`,
+  resetToken:    (email)  => `reset:${email}`,
+  productList:   ()       => `products:list`,
+  product:       (id)     => `product:${id}`,
+  cart:          (userId) => `cart:${userId}`,
+  profile:       (userId) => `profile:${userId}`,
+  wishlist:      (userId) => `wishlist:${userId}`,
+  rateLimit:     (key)    => `ratelimit:${key}`,
 };
 
 // Channels for pub/sub

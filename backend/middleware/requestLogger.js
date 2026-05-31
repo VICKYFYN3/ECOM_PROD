@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import jwt from 'jsonwebtoken';
 import logger from '../utils/logger.js';
 
 const SENSITIVE_FIELDS = [
@@ -19,12 +20,24 @@ const maskSensitiveData = (obj) => {
   return masked;
 };
 
+// Extract userId from JWT without full validation — just for logging
+const extractUserId = (req) => {
+  try {
+    const token = req.headers.token;
+    if (!token) return null;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    return decoded.id || null;
+  } catch (e) {
+    return null;
+  }
+};
+
 const requestLogger = (req, res, next) => {
-  // Skip health check endpoints — they log themselves at debug level
   if (req.url.startsWith('/health/')) return next();
 
   const requestId = uuidv4();
   const startTime = Date.now();
+  const userId = extractUserId(req);
 
   req.requestId = requestId;
   res.setHeader('X-Request-ID', requestId);
@@ -36,7 +49,7 @@ const requestLogger = (req, res, next) => {
     url: req.originalUrl,
     ip: req.ip || req.connection.remoteAddress,
     userAgent: req.headers['user-agent'],
-    userId: req.body?.userId || null,
+    userId,
     body: maskSensitiveData(req.body),
     query: req.query,
     params: req.params,
@@ -62,6 +75,9 @@ const requestLogger = (req, res, next) => {
                 : res.statusCode >= 400 ? 'warn'
                 : 'http';
 
+    // Use userId from auth middleware if available, fallback to JWT extract
+    const finalUserId = req.body?.userId || userId;
+
     logger[level]('Request completed', {
       type: 'response',
       requestId,
@@ -69,7 +85,7 @@ const requestLogger = (req, res, next) => {
       url: req.originalUrl,
       statusCode: res.statusCode,
       responseTime: `${responseTime}ms`,
-      userId: req.body?.userId || null,
+      userId: finalUserId,
       ...(responseTime > 2000 && { slowRequest: true, threshold: '2000ms' }),
       ...(res.statusCode >= 400 && { responseBody: maskSensitiveData(responseBody) }),
     });

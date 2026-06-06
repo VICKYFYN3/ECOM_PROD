@@ -14,6 +14,7 @@ import logger from "../utils/logger.js";
 import { redis } from "../config/redis.js";
 import { KEYS, TTL, cacheGet, cacheSet, cacheDel } from "../utils/cache.js";
 import { sendEmail } from "../queues/emailQueue.js";
+import svc from "../utils/serviceLogger.js";
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -25,70 +26,73 @@ const createToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
 };
 
-const createSession = async (userId, token, req) => {
+const createSession = async (userId, token, req, traceId = null) => {
     const deviceInfo = getDeviceInfo(req.headers['user-agent'], req.ip);
-    const session = new sessionModel({ userId, token, deviceInfo });
-    await session.save();
+    const session = await svc.db(traceId, 'save', 'sessions', async () => {
+        const s = new sessionModel({ userId, token, deviceInfo });
+        await s.save();
+        return s;
+    });
     await cacheSet(KEYS.session(token), session, TTL.SESSION);
     return session;
 };
 
 const googleAuth = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const { token } = req.body;
-        const ticket = await client.verifyIdToken({
-            idToken: token,
-            audience: process.env.GOOGLE_CLIENT_ID,
-        });
+        const ticket = await svc.external(traceId, 'google', 'verifyIdToken', () =>
+            client.verifyIdToken({ idToken: token, audience: process.env.GOOGLE_CLIENT_ID })
+        );
         const payload = ticket.getPayload();
-        let user = await userModel.findOne({ email: payload.email });
+        let user = await svc.db(traceId, 'findOne', 'users', () =>
+            userModel.findOne({ email: payload.email })
+        );
         const isNewUser = !user;
         if (!user) {
-            user = new userModel({
-                name: payload.name,
-                email: payload.email,
-                password: 'google-auth',
+            user = await svc.db(traceId, 'save', 'users', async () => {
+                const u = new userModel({ name: payload.name, email: payload.email, password: 'google-auth' });
+                await u.save();
+                return u;
             });
-            await user.save();
         }
         const authToken = createToken(user._id);
-        await createSession(user._id, authToken, req);
-        eventLogger.auth.googleAuth({
-            requestId, userId: user._id, email: payload.email, isNewUser, ip: req.ip,
-        });
+        await createSession(user._id, authToken, req, traceId);
+        eventLogger.auth.googleAuth({ requestId, traceId, userId: user._id, email: payload.email, isNewUser, ip: req.ip });
         res.json({ success: true, token: authToken });
     } catch (error) {
-        logger.error('Google auth failed', { requestId, error: error.message, ip: req.ip });
+        logger.error('Google auth failed', { traceId, error: error.message, ip: req.ip });
         res.json({ success: false, message: error.message });
     }
 };
 
 const forgotPassword = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const { email } = req.body;
-        const user = await userModel.findOne({ email });
+        const user = await svc.db(traceId, 'findOne', 'users', () =>
+            userModel.findOne({ email })
+        );
         if (!user) {
-            logger.warn('Password reset for non-existent email', { requestId, email, ip: req.ip });
+            logger.warn('Password reset for non-existent email', { traceId, email, ip: req.ip });
             return res.status(404).json({ success: false, message: "User not found" });
         }
         const resetToken = generateResetToken();
         await cacheSet(KEYS.resetToken(email), resetToken, TTL.RESET_TOKEN);
-        await userModel.findByIdAndUpdate(user._id, {
-            $unset: { resetToken: 1, resetTokenExpiry: 1 }
-        });
-        eventLogger.auth.passwordReset({ requestId, userId: user._id, email, ip: req.ip, stage: 'requested' });
-        const transporter = nodemailer.createTransport({
+        await svc.db(traceId, 'findByIdAndUpdate', 'users', () =>
+            userModel.findByIdAndUpdate(user._id, { $unset: { resetToken: 1, resetTokenExpiry: 1 } })
+        );
+        eventLogger.auth.passwordReset({ requestId, traceId, userId: user._id, email, ip: req.ip, stage: 'requested' });
+        const mailTransporter = nodemailer.createTransport({
             service: 'gmail',
             auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
         });
-        await transporter.sendMail({
-            from: `"FYN3" <${process.env.EMAIL_USER}>`,
-            to: email,
-            subject: 'Password Reset Code - FYN3',
-            html: `
-                <!DOCTYPE html><html><body style="margin:0;padding:0;font-family:Arial,sans-serif;background-color:#f8f9fa;">
+        await svc.email(traceId, email, 'Password Reset Code - FYN3', () =>
+            mailTransporter.sendMail({
+                from: `"FYN3" <${process.env.EMAIL_USER}>`,
+                to: email,
+                subject: 'Password Reset Code - FYN3',
+                html: `<!DOCTYPE html><html><body style="margin:0;padding:0;font-family:Arial,sans-serif;background-color:#f8f9fa;">
                 <div style="max-width:600px;margin:0 auto;background-color:#ffffff;">
                 <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:40px 20px;text-align:center;">
                 <h2 style="color:white;margin:0;">Password Reset Request</h2></div>
@@ -102,18 +106,19 @@ const forgotPassword = async (req, res) => {
                 <p style="color:white;margin:10px 0 0 0;font-size:12px;">Valid for 60 seconds</p>
                 </div>
                 <p style="color:#666;">If you didn't request this, please ignore this email.</p>
-                </div></div></body></html>
-            `,
-        });
+                </div></div></body></html>`,
+            }),
+            { emailType: 'password_reset' }
+        );
         res.json({ success: true, message: "Reset code sent to your email" });
     } catch (error) {
-        logger.error('Forgot password failed', { requestId, error: error.message });
+        logger.error('Forgot password failed', { traceId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
 const resetPassword = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const { token, newPassword, email } = req.body;
         if (!token || !newPassword || !email) {
@@ -121,86 +126,90 @@ const resetPassword = async (req, res) => {
         }
         const storedToken = await cacheGet(KEYS.resetToken(email));
         if (!storedToken) {
-            logger.warn('Expired or invalid reset token', { requestId, email, ip: req.ip });
+            logger.warn('Expired or invalid reset token', { traceId, email, ip: req.ip });
             return res.status(400).json({ success: false, message: "Invalid or expired reset token" });
         }
         if (storedToken !== token) {
-            logger.warn('Wrong reset token', { requestId, email, ip: req.ip });
+            logger.warn('Wrong reset token', { traceId, email, ip: req.ip });
             return res.status(400).json({ success: false, message: "Invalid or expired reset token" });
         }
-        const user = await userModel.findOne({ email });
+        const user = await svc.db(traceId, 'findOne', 'users', () =>
+            userModel.findOne({ email })
+        );
         if (!user) return res.status(404).json({ success: false, message: "User not found" });
-        if (newPassword.length < 8) {
-            return res.status(400).json({ success: false, message: "Password must be at least 8 characters" });
-        }
+        if (newPassword.length < 8) return res.status(400).json({ success: false, message: "Password must be at least 8 characters" });
         const salt = await bcrypt.genSalt(10);
-        user.password = await bcrypt.hash(newPassword, salt);
-        await user.save();
+        user.password = await svc.internal(traceId, 'bcrypt.hash', () =>
+            bcrypt.hash(newPassword, salt)
+        );
+        await svc.db(traceId, 'save', 'users', () => user.save());
         await cacheDel(KEYS.resetToken(email));
-        eventLogger.auth.passwordReset({ requestId, userId: user._id, ip: req.ip, stage: 'completed' });
+        eventLogger.auth.passwordReset({ requestId, traceId, userId: user._id, ip: req.ip, stage: 'completed' });
         res.json({ success: true, message: "Password updated successfully" });
     } catch (error) {
-        logger.error('Reset password failed', { requestId, error: error.message });
+        logger.error('Reset password failed', { traceId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
 const loginUser = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const { email, password } = req.body;
-        const user = await userModel.findOne({ email });
+        const user = await svc.db(traceId, 'findOne', 'users', () =>
+            userModel.findOne({ email })
+        );
         if (!user) {
-            eventLogger.auth.loginFailed({ requestId, email, reason: 'user_not_found', ip: req.ip });
+            eventLogger.auth.loginFailed({ requestId, traceId, email, reason: 'user_not_found', ip: req.ip });
             return res.status(404).json({ success: false, message: "User does not exist" });
         }
         if (!user.isVerified && user.password !== 'google-auth') {
-            eventLogger.auth.loginFailed({ requestId, email, userId: user._id, reason: 'email_not_verified', ip: req.ip });
+            eventLogger.auth.loginFailed({ requestId, traceId, email, userId: user._id, reason: 'email_not_verified', ip: req.ip });
             return res.status(403).json({ success: false, message: "Please verify your email before logging in." });
         }
-        const isMatch = await bcrypt.compare(password, user.password);
+        const isMatch = await svc.internal(traceId, 'bcrypt.compare', () =>
+            bcrypt.compare(password, user.password)
+        );
         if (isMatch) {
             const token = createToken(user._id);
-            await createSession(user._id, token, req);
-            eventLogger.auth.loginSuccess({ requestId, userId: user._id, email, method: 'email', ip: req.ip });
+            await createSession(user._id, token, req, traceId);
+            eventLogger.auth.loginSuccess({ requestId, traceId, userId: user._id, email, method: 'email', ip: req.ip });
             res.json({ success: true, token });
         } else {
-            eventLogger.auth.loginFailed({ requestId, email, userId: user._id, reason: 'invalid_password', ip: req.ip });
+            eventLogger.auth.loginFailed({ requestId, traceId, email, userId: user._id, reason: 'invalid_password', ip: req.ip });
             res.status(401).json({ success: false, message: "Invalid credentials" });
         }
     } catch (error) {
-        logger.error('Login failed', { requestId, error: error.message });
+        logger.error('Login failed', { traceId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
 const registerUser = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const { name, email, password } = req.body;
-        const exists = await userModel.findOne({ email });
+        const exists = await svc.db(traceId, 'findOne', 'users', () =>
+            userModel.findOne({ email })
+        );
         if (exists) {
-            logger.warn('Registration with existing email', { requestId, email, ip: req.ip });
+            logger.warn('Registration with existing email', { traceId, email, ip: req.ip });
             return res.status(400).json({ success: false, message: "User already exists" });
         }
-        if (!validator.isEmail(email)) {
-            return res.status(400).json({ success: false, message: "Please enter a valid email" });
-        }
-        if (password.length < 8) {
-            return res.status(400).json({ success: false, message: "Password must be at least 8 characters" });
-        }
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-        const verificationCode = generateResetToken();
-        await cacheSet(KEYS.otp(email), {
-            code: verificationCode,
-            resendAt: Date.now() + 4 * 60 * 1000,
-        }, TTL.OTP);
-        const newUser = new userModel({
-            name, email, password: hashedPassword, isVerified: false,
+        if (!validator.isEmail(email)) return res.status(400).json({ success: false, message: "Please enter a valid email" });
+        if (password.length < 8) return res.status(400).json({ success: false, message: "Password must be at least 8 characters" });
+        const hashedPassword = await svc.internal(traceId, 'bcrypt.hash', async () => {
+            const salt = await bcrypt.genSalt(10);
+            return bcrypt.hash(password, salt);
         });
-        await newUser.save();
-        eventLogger.auth.registered({ requestId, userId: newUser._id, email, method: 'email', ip: req.ip });
+        const verificationCode = generateResetToken();
+        await cacheSet(KEYS.otp(email), { code: verificationCode, resendAt: Date.now() + 4 * 60 * 1000 }, TTL.OTP);
+        const newUser = await svc.db(traceId, 'save', 'users', async () => {
+            const u = new userModel({ name, email, password: hashedPassword, isVerified: false });
+            await u.save();
+            return u;
+        });
+        eventLogger.auth.registered({ requestId, traceId, userId: newUser._id, email, method: 'email', ip: req.ip });
         const subject = 'Verify Your Email - FYN3';
         const message = `<div style="text-align:center;">
             <h2>Welcome, ${name}!</h2>
@@ -211,44 +220,46 @@ const registerUser = async (req, res) => {
         await sendEmail(email, subject, getEmailTemplate(subject, message), 'verification');
         res.status(201).json({ success: true, message: "Verification code sent to your email. Please verify to complete registration." });
     } catch (error) {
-        logger.error('Registration failed', { requestId, error: error.message });
+        logger.error('Registration failed', { traceId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
 const verifyEmail = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const { email, code } = req.body;
-        const user = await userModel.findOne({ email });
+        const user = await svc.db(traceId, 'findOne', 'users', () =>
+            userModel.findOne({ email })
+        );
         if (!user) return res.status(404).json({ success: false, message: "User not found" });
         if (user.isVerified) return res.status(400).json({ success: false, message: "Email already verified" });
         const otpData = await cacheGet(KEYS.otp(email));
-        if (!otpData) {
-            return res.status(400).json({ success: false, message: "Verification code expired. Please request a new one." });
-        }
+        if (!otpData) return res.status(400).json({ success: false, message: "Verification code expired. Please request a new one." });
         if (otpData.code !== code) {
-            logger.warn('Invalid verification code', { requestId, email, ip: req.ip });
+            logger.warn('Invalid verification code', { traceId, email, ip: req.ip });
             return res.status(400).json({ success: false, message: "Invalid verification code" });
         }
         user.isVerified = true;
-        await user.save();
+        await svc.db(traceId, 'save', 'users', () => user.save());
         await cacheDel(KEYS.otp(email));
         const token = createToken(user._id);
-        await createSession(user._id, token, req);
-        logger.info('Email verified', { requestId, userId: user._id, email, ip: req.ip });
+        await createSession(user._id, token, req, traceId);
+        logger.info('Email verified', { traceId, userId: user._id, email, ip: req.ip });
         res.json({ success: true, token, message: "Email verified successfully" });
     } catch (error) {
-        logger.error('Email verification failed', { requestId, error: error.message });
+        logger.error('Email verification failed', { traceId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
 const resendVerificationCode = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const { email } = req.body;
-        const user = await userModel.findOne({ email });
+        const user = await svc.db(traceId, 'findOne', 'users', () =>
+            userModel.findOne({ email })
+        );
         if (!user) return res.status(404).json({ success: false, message: "User not found" });
         if (user.isVerified) return res.status(400).json({ success: false, message: "Email already verified" });
         const existing = await cacheGet(KEYS.otp(email));
@@ -257,11 +268,8 @@ const resendVerificationCode = async (req, res) => {
             return res.status(429).json({ success: false, message: `Please wait ${wait} seconds before requesting another code.` });
         }
         const verificationCode = generateResetToken();
-        await cacheSet(KEYS.otp(email), {
-            code: verificationCode,
-            resendAt: Date.now() + 4 * 60 * 1000,
-        }, TTL.OTP);
-        logger.info('Verification code resent', { requestId, userId: user._id, email, ip: req.ip });
+        await cacheSet(KEYS.otp(email), { code: verificationCode, resendAt: Date.now() + 4 * 60 * 1000 }, TTL.OTP);
+        logger.info('Verification code resent', { traceId, userId: user._id, email, ip: req.ip });
         const subject = 'Verify Your Email - FYN3';
         const message = `<div style="text-align:center;">
             <h2>Hello, ${user.name}!</h2>
@@ -272,154 +280,155 @@ const resendVerificationCode = async (req, res) => {
         await sendEmail(email, subject, getEmailTemplate(subject, message), 'resend_verification');
         res.json({ success: true, message: "Verification code resent to your email." });
     } catch (error) {
-        logger.error('Resend verification failed', { requestId, error: error.message });
+        logger.error('Resend verification failed', { traceId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
 const adminLogin = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const { email, password } = req.body;
         if (email === process.env.ADMIN_EMAIL && password === process.env.ADMIN_PASSWORD) {
             const token = jwt.sign({ email, role: 'admin' }, process.env.JWT_SECRET, { expiresIn: '30d' });
-            eventLogger.admin.loggedIn({ requestId, email, ip: req.ip });
+            eventLogger.admin.loggedIn({ requestId, traceId, email, ip: req.ip });
             res.json({ success: true, token });
         } else {
-            logger.warn('Failed admin login', { requestId, email, ip: req.ip });
+            logger.warn('Failed admin login', { traceId, email, ip: req.ip });
             res.status(401).json({ success: false, message: "Invalid credentials" });
         }
     } catch (error) {
-        logger.error('Admin login error', { requestId, error: error.message });
+        logger.error('Admin login error', { traceId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
 const getProfile = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const userId = req.body.userId;
-
-        // Check cache first
         const cached = await cacheGet(KEYS.profile(userId));
-        if (cached) {
-            logger.debug('Profile served from cache', { requestId, userId });
-            return res.json({ success: true, profile: cached });
-        }
-
-        const user = await userModel.findById(userId).select('-password');
+        if (cached) return res.json({ success: true, profile: cached });
+        const user = await svc.db(traceId, 'findById', 'users', () =>
+            userModel.findById(userId).select('-password')
+        );
         if (!user) return res.status(404).json({ success: false, message: "User not found" });
-
         const profileData = {
             fullName: user.name, email: user.email,
             phoneNumber: user.phoneNumber, profilePicture: user.profilePicture,
             subscribed: user.subscribed
         };
-
-        // Cache profile
         await cacheSet(KEYS.profile(userId), profileData, TTL.PROFILE);
-
         res.json({ success: true, profile: profileData });
     } catch (error) {
-        logger.error('Get profile failed', { requestId, error: error.message });
+        logger.error('Get profile failed', { traceId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
 const updateProfile = async (req, res) => {
-    const requestId = req.requestId;
-    if (req.fileSizeError) {
-        return res.status(400).json({ success: false, message: "Profile image is too large. Maximum allowed size is 2MB." });
-    }
+    const { requestId, traceId } = req;
+    if (req.fileSizeError) return res.status(400).json({ success: false, message: "Profile image is too large. Maximum allowed size is 2MB." });
     try {
         const { fullName, phoneNumber } = req.body;
         const updateData = { name: fullName, phoneNumber };
         if (req.file) {
-            const result = await cloudinary.uploader.upload(req.file.path, { resource_type: 'image' });
+            const result = await svc.cloudinary(traceId, 'upload', () =>
+                cloudinary.uploader.upload(req.file.path, { resource_type: 'image' }),
+                { context: 'profile_picture' }
+            );
             updateData.profilePicture = result.secure_url;
         }
-        const updatedUser = await userModel.findByIdAndUpdate(req.body.userId, updateData, { new: true }).select('-password');
+        const updatedUser = await svc.db(traceId, 'findByIdAndUpdate', 'users', () =>
+            userModel.findByIdAndUpdate(req.body.userId, updateData, { new: true }).select('-password')
+        );
         if (!updatedUser) return res.status(404).json({ success: false, message: "User not found" });
-
-        // Invalidate profile cache
         await cacheDel(KEYS.profile(req.body.userId));
-
-        eventLogger.user.profileUpdated({ requestId, userId: req.body.userId, updatedFields: Object.keys(updateData) });
+        eventLogger.user.profileUpdated({ requestId, traceId, userId: req.body.userId, updatedFields: Object.keys(updateData) });
         res.json({ success: true, profile: {
             fullName: updatedUser.name, email: updatedUser.email,
             phoneNumber: updatedUser.phoneNumber, profilePicture: updatedUser.profilePicture,
         }});
     } catch (error) {
-        logger.error('Update profile failed', { requestId, error: error.message });
+        logger.error('Update profile failed', { traceId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
 const changePassword = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const { currentPassword, newPassword } = req.body;
-        const user = await userModel.findById(req.body.userId);
+        const user = await svc.db(traceId, 'findById', 'users', () =>
+            userModel.findById(req.body.userId)
+        );
         if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-        const isMatch = await bcrypt.compare(currentPassword, user.password);
+        const isMatch = await svc.internal(traceId, 'bcrypt.compare', () =>
+            bcrypt.compare(currentPassword, user.password)
+        );
         if (!isMatch) {
-            logger.warn('Wrong current password', { requestId, userId: req.body.userId, ip: req.ip });
+            logger.warn('Wrong current password', { traceId, userId: req.body.userId, ip: req.ip });
             return res.status(401).json({ success: false, message: 'Current password is incorrect' });
         }
         if (newPassword.length < 8) return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
-        user.password = await bcrypt.hash(newPassword, 10);
-        await user.save();
-        logger.info('Password changed', { requestId, userId: req.body.userId, ip: req.ip });
+        user.password = await svc.internal(traceId, 'bcrypt.hash', () =>
+            bcrypt.hash(newPassword, 10)
+        );
+        await svc.db(traceId, 'save', 'users', () => user.save());
+        logger.info('Password changed', { traceId, userId: req.body.userId, ip: req.ip });
         res.json({ success: true, message: 'Password updated successfully' });
     } catch (error) {
-        logger.error('Change password failed', { requestId, error: error.message });
+        logger.error('Change password failed', { traceId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
 const deactivateAccount = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
-        const user = await userModel.findByIdAndDelete(req.body.userId);
+        const user = await svc.db(traceId, 'findByIdAndDelete', 'users', () =>
+            userModel.findByIdAndDelete(req.body.userId)
+        );
         if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-        // Clear all caches for this user
         await cacheDel(KEYS.profile(req.body.userId));
         await cacheDel(KEYS.wishlist(req.body.userId));
         await cacheDel(KEYS.cart(req.body.userId));
-        await sessionModel.find({ userId: req.body.userId }).then(async (sessions) => {
-            for (const s of sessions) await cacheDel(KEYS.session(s.token));
-        });
-        logger.info('Account deactivated', { requestId, userId: req.body.userId, email: user.email, ip: req.ip });
+        const sessions = await sessionModel.find({ userId: req.body.userId });
+        for (const s of sessions) await cacheDel(KEYS.session(s.token));
+        logger.info('Account deactivated', { traceId, userId: req.body.userId, email: user.email, ip: req.ip });
         res.json({ success: true, message: 'Account deleted successfully' });
     } catch (error) {
-        logger.error('Account deactivation failed', { requestId, error: error.message });
+        logger.error('Account deactivation failed', { traceId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
 const subscribeToNewsletter = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
-        const user = await userModel.findById(req.body.userId);
+        const user = await svc.db(traceId, 'findById', 'users', () =>
+            userModel.findById(req.body.userId)
+        );
         if (!user) return res.status(404).json({ success: false, message: "User not found" });
         user.subscribed = true;
-        await user.save();
-        // Invalidate profile cache since subscribed status changed
+        await svc.db(traceId, 'save', 'users', () => user.save());
         await cacheDel(KEYS.profile(req.body.userId));
-        logger.info('Newsletter subscribed', { requestId, userId: req.body.userId });
+        logger.info('Newsletter subscribed', { traceId, userId: req.body.userId });
         res.json({ success: true, message: "Subscribed to newsletter successfully" });
     } catch (error) {
-        logger.error('Newsletter subscription failed', { requestId, error: error.message });
+        logger.error('Newsletter subscription failed', { traceId, error: error.message });
         res.json({ success: false, message: "An error occurred while subscribing to the newsletter" });
     }
 };
 
 const sendNewsletter = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const { subject, message, imageUrl } = req.body;
         if (!subject || !message) return res.status(400).json({ success: false, message: 'Subject and message are required' });
-        const subscribedUsers = await userModel.find({ subscribed: true });
+        const subscribedUsers = await svc.db(traceId, 'find', 'users', () =>
+            userModel.find({ subscribed: true })
+        );
         if (subscribedUsers.length === 0) return res.status(404).json({ success: false, message: 'No subscribed users found' });
         const newsletterHtml = getEmailTemplate(subject, message, '', imageUrl);
         let sent = 0, failed = 0;
@@ -429,31 +438,34 @@ const sendNewsletter = async (req, res) => {
                 sent++;
             } catch (error) {
                 failed++;
-                eventLogger.system.emailError({ requestId, error: error.message, type: 'newsletter', recipient: user.email });
+                eventLogger.system.emailError({ requestId, traceId, error: error.message, type: 'newsletter', recipient: user.email });
             }
         }
-        logger.info('Newsletter queued', { requestId, total: subscribedUsers.length, sent, failed });
+        logger.info('Newsletter queued', { traceId, total: subscribedUsers.length, sent, failed });
         res.json({ success: true, message: 'Newsletter sent successfully' });
     } catch (error) {
-        logger.error('Newsletter send failed', { requestId, error: error.message });
+        logger.error('Newsletter send failed', { traceId, error: error.message });
         res.json({ success: false, message: 'An error occurred while sending the newsletter' });
     }
 };
 
 const uploadNewsletterImage = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     if (req.fileSizeError) return res.status(400).json({ success: false, message: "Newsletter image is too large. Maximum allowed size is 2MB." });
     try {
         if (!req.file) return res.status(400).json({ success: false, message: 'No image file provided' });
         if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
-            eventLogger.system.cloudinaryError({ requestId, error: 'Cloudinary configuration missing' });
+            eventLogger.system.cloudinaryError({ requestId, traceId, error: 'Cloudinary configuration missing' });
             return res.status(500).json({ success: false, message: 'Image upload service not configured' });
         }
-        const result = await cloudinary.uploader.upload(req.file.path, { resource_type: 'image', folder: 'newsletter-images' });
-        logger.info('Newsletter image uploaded', { requestId, url: result.secure_url });
+        const result = await svc.cloudinary(traceId, 'upload', () =>
+            cloudinary.uploader.upload(req.file.path, { resource_type: 'image', folder: 'newsletter-images' }),
+            { context: 'newsletter_image' }
+        );
+        logger.info('Newsletter image uploaded', { traceId, url: result.secure_url });
         res.json({ success: true, imageUrl: result.secure_url, message: 'Image uploaded successfully' });
     } catch (error) {
-        eventLogger.system.cloudinaryError({ requestId, error: error.message, context: 'newsletter_image_upload' });
+        eventLogger.system.cloudinaryError({ requestId, traceId, error: error.message, context: 'newsletter_image_upload' });
         let errorMessage = 'An error occurred while uploading the image';
         if (error.message.includes('Invalid API credentials')) errorMessage = 'Image upload service configuration error';
         else if (error.message.includes('File too large')) errorMessage = 'Image file is too large';
@@ -463,21 +475,25 @@ const uploadNewsletterImage = async (req, res) => {
 };
 
 const getSubscribersCount = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
-        const count = await userModel.countDocuments({ subscribed: true });
+        const count = await svc.db(traceId, 'countDocuments', 'users', () =>
+            userModel.countDocuments({ subscribed: true })
+        );
         res.json({ success: true, count });
     } catch (error) {
-        logger.error('Get subscribers count failed', { requestId, error: error.message });
+        logger.error('Get subscribers count failed', { traceId, error: error.message });
         res.json({ success: false, message: 'An error occurred while fetching the subscribers count' });
     }
 };
 
 const getUserSessions = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const userId = req.body.userId;
-        const sessions = await sessionModel.find({ userId, isActive: true }).sort({ lastActivity: -1 });
+        const sessions = await svc.db(traceId, 'find', 'sessions', () =>
+            sessionModel.find({ userId, isActive: true }).sort({ lastActivity: -1 })
+        );
         const formattedSessions = sessions.map(session => ({
             id: session._id, deviceInfo: session.deviceInfo,
             lastActivity: session.lastActivity, createdAt: session.createdAt,
@@ -485,113 +501,108 @@ const getUserSessions = async (req, res) => {
         }));
         res.json({ success: true, sessions: formattedSessions });
     } catch (error) {
-        logger.error('Get user sessions failed', { requestId, error: error.message });
+        logger.error('Get user sessions failed', { traceId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
 const signOutAllDevices = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const userId = req.body.userId;
-        const sessions = await sessionModel.find({ userId, isActive: true });
-        for (const session of sessions) {
-            await cacheDel(KEYS.session(session.token));
-        }
-        await sessionModel.updateMany({ userId, isActive: true }, { isActive: false });
-        eventLogger.auth.logout({ requestId, userId, type: 'all_devices', ip: req.ip });
+        const sessions = await svc.db(traceId, 'find', 'sessions', () =>
+            sessionModel.find({ userId, isActive: true })
+        );
+        for (const session of sessions) await cacheDel(KEYS.session(session.token));
+        await svc.db(traceId, 'updateMany', 'sessions', () =>
+            sessionModel.updateMany({ userId, isActive: true }, { isActive: false })
+        );
+        eventLogger.auth.logout({ requestId, traceId, userId, type: 'all_devices', ip: req.ip });
         res.json({ success: true, message: 'Signed out from all devices successfully' });
     } catch (error) {
-        logger.error('Sign out all devices failed', { requestId, error: error.message });
+        logger.error('Sign out all devices failed', { traceId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
 const signOutDevice = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const { sessionId } = req.body;
         const userId = req.body.userId;
-        const session = await sessionModel.findOneAndUpdate(
-            { _id: sessionId, userId, isActive: true },
-            { isActive: false }, { new: true }
+        const session = await svc.db(traceId, 'findOneAndUpdate', 'sessions', () =>
+            sessionModel.findOneAndUpdate(
+                { _id: sessionId, userId, isActive: true },
+                { isActive: false }, { new: true }
+            )
         );
         if (!session) return res.status(404).json({ success: false, message: 'Session not found' });
         await cacheDel(KEYS.session(session.token));
-        eventLogger.auth.logout({ requestId, userId, sessionId, type: 'single_device', ip: req.ip });
+        eventLogger.auth.logout({ requestId, traceId, userId, sessionId, type: 'single_device', ip: req.ip });
         res.json({ success: true, message: 'Signed out from device successfully' });
     } catch (error) {
-        logger.error('Sign out device failed', { requestId, error: error.message });
+        logger.error('Sign out device failed', { traceId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
 const addToWishlist = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const userId = req.body.userId;
         const { productId } = req.params;
         if (!productId) return res.status(400).json({ success: false, message: 'Product ID is required' });
-        const user = await userModel.findById(userId);
+        const user = await svc.db(traceId, 'findById', 'users', () =>
+            userModel.findById(userId)
+        );
         if (!user) return res.status(404).json({ success: false, message: 'User not found' });
         if (user.wishlist.includes(productId)) return res.status(400).json({ success: false, message: 'Product already in wishlist' });
         user.wishlist.push(productId);
-        await user.save();
-
-        // Invalidate wishlist cache
+        await svc.db(traceId, 'save', 'users', () => user.save());
         await cacheDel(KEYS.wishlist(userId));
-
-        eventLogger.user.wishlistUpdated({ requestId, userId, productId, action: 'added' });
+        eventLogger.user.wishlistUpdated({ requestId, traceId, userId, productId, action: 'added' });
         return res.json({ success: true, message: 'Product added to wishlist' });
     } catch (error) {
-        logger.error('Add to wishlist failed', { requestId, error: error.message });
+        logger.error('Add to wishlist failed', { traceId, error: error.message });
         return res.status(500).json({ success: false, message: error.message });
     }
 };
 
 const removeFromWishlist = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const userId = req.body.userId;
         const { productId } = req.params;
         if (!productId) return res.status(400).json({ success: false, message: 'Product ID is required' });
-        const user = await userModel.findById(userId);
+        const user = await svc.db(traceId, 'findById', 'users', () =>
+            userModel.findById(userId)
+        );
         if (!user) return res.status(404).json({ success: false, message: 'User not found' });
         user.wishlist = user.wishlist.filter(id => id.toString() !== productId);
-        await user.save();
-
-        // Invalidate wishlist cache
+        await svc.db(traceId, 'save', 'users', () => user.save());
         await cacheDel(KEYS.wishlist(userId));
-
-        eventLogger.user.wishlistUpdated({ requestId, userId, productId, action: 'removed' });
+        eventLogger.user.wishlistUpdated({ requestId, traceId, userId, productId, action: 'removed' });
         return res.json({ success: true, message: 'Product removed from wishlist' });
     } catch (error) {
-        logger.error('Remove from wishlist failed', { requestId, error: error.message });
+        logger.error('Remove from wishlist failed', { traceId, error: error.message });
         return res.status(500).json({ success: false, message: error.message });
     }
 };
 
 const getWishlist = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const userId = req.body.userId;
-
-        // Check cache first
         const cached = await cacheGet(KEYS.wishlist(userId));
-        if (cached) {
-            logger.debug('Wishlist served from cache', { requestId, userId });
-            return res.json({ success: true, wishlist: cached });
-        }
-
-        const user = await userModel.findById(userId).populate('wishlist');
+        if (cached) return res.json({ success: true, wishlist: cached });
+        const user = await svc.db(traceId, 'findById', 'users', () =>
+            userModel.findById(userId).populate('wishlist')
+        );
         if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-
-        // Cache wishlist
         await cacheSet(KEYS.wishlist(userId), user.wishlist, TTL.WISHLIST);
-
         return res.json({ success: true, wishlist: user.wishlist });
     } catch (error) {
-        logger.error('Get wishlist failed', { requestId, error: error.message });
+        logger.error('Get wishlist failed', { traceId, error: error.message });
         return res.status(500).json({ success: false, message: error.message });
     }
 };

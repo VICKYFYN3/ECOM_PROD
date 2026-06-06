@@ -1,108 +1,95 @@
 import userModel from "../models/userModel.js";
 import logger from "../utils/logger.js";
 import { KEYS, TTL, cacheGet, cacheSet, cacheDel } from "../utils/cache.js";
+import svc from "../utils/serviceLogger.js";
 
 const addToCart = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const { userId, itemId, size } = req.body;
-        const userData = await userModel.findById(userId);
+        const userData = await svc.db(traceId, 'findById', 'users', () =>
+            userModel.findById(userId)
+        );
         let cartData = await userData.cartData;
-
         if (cartData[itemId]) {
-            if (cartData[itemId][size]) {
-                cartData[itemId][size] += 1;
-            } else {
-                cartData[itemId][size] = 1;
-            }
+            cartData[itemId][size] = (cartData[itemId][size] || 0) + 1;
         } else {
             cartData[itemId] = {};
             cartData[itemId][size] = 1;
         }
-
-        await userModel.findByIdAndUpdate(userId, { cartData });
-
-        // Update cart cache
+        await svc.db(traceId, 'findByIdAndUpdate', 'users', () =>
+            userModel.findByIdAndUpdate(userId, { cartData })
+        );
         await cacheSet(KEYS.cart(userId), cartData, TTL.CART);
-
-        logger.info('Item added to cart', { requestId, userId, itemId, size, quantity: cartData[itemId][size] });
+        logger.info('Item added to cart', { traceId, userId, itemId, size, quantity: cartData[itemId][size] });
         res.json({ success: true, message: 'Added to Cart' });
     } catch (error) {
-        logger.error('Add to cart failed', { requestId, error: error.message });
+        logger.error('Add to cart failed', { traceId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
 const updateCart = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const { userId, itemId, size, quantity } = req.body;
-        const userData = await userModel.findById(userId);
+        const userData = await svc.db(traceId, 'findById', 'users', () =>
+            userModel.findById(userId)
+        );
         let cartData = await userData.cartData;
         cartData[itemId][size] = quantity;
-        await userModel.findByIdAndUpdate(userId, { cartData });
-
-        // Update cart cache
+        await svc.db(traceId, 'findByIdAndUpdate', 'users', () =>
+            userModel.findByIdAndUpdate(userId, { cartData })
+        );
         await cacheSet(KEYS.cart(userId), cartData, TTL.CART);
-
-        logger.info('Cart updated', { requestId, userId, itemId, size, quantity });
+        logger.info('Cart updated', { traceId, userId, itemId, size, quantity });
         res.json({ success: true, message: "Cart Updated" });
     } catch (error) {
-        logger.error('Update cart failed', { requestId, error: error.message });
+        logger.error('Update cart failed', { traceId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
 const getUserCart = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const { userId } = req.body;
-
-        // Check cache first
         const cached = await cacheGet(KEYS.cart(userId));
-        if (cached) {
-            logger.debug('Cart served from cache', { requestId, userId });
-            return res.json({ success: true, cartData: cached });
-        }
-
-        // Cache miss — fetch from MongoDB
-        const userData = await userModel.findById(userId);
+        if (cached) return res.json({ success: true, cartData: cached });
+        const userData = await svc.db(traceId, 'findById', 'users', () =>
+            userModel.findById(userId)
+        );
         let cartData = await userData.cartData;
-
-        // Cache cart
         await cacheSet(KEYS.cart(userId), cartData, TTL.CART);
-
         res.json({ success: true, cartData });
     } catch (error) {
-        logger.error('Get cart failed', { requestId, error: error.message });
+        logger.error('Get cart failed', { traceId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };
 
 const removeFromCart = async (req, res) => {
-    const requestId = req.requestId;
+    const { requestId, traceId } = req;
     try {
         const { userId, itemId, size } = req.body;
-        const userData = await userModel.findById(userId);
+        const userData = await svc.db(traceId, 'findById', 'users', () =>
+            userModel.findById(userId)
+        );
         let cartData = userData.cartData;
-
         if (cartData[itemId] && cartData[itemId][size]) {
             delete cartData[itemId][size];
-            if (Object.keys(cartData[itemId]).length === 0) {
-                delete cartData[itemId];
-            }
-            await userModel.findByIdAndUpdate(userId, { cartData });
-
-            // Update cart cache
+            if (Object.keys(cartData[itemId]).length === 0) delete cartData[itemId];
+            await svc.db(traceId, 'findByIdAndUpdate', 'users', () =>
+                userModel.findByIdAndUpdate(userId, { cartData })
+            );
             await cacheSet(KEYS.cart(userId), cartData, TTL.CART);
-
-            logger.info('Item removed from cart', { requestId, userId, itemId, size });
+            logger.info('Item removed from cart', { traceId, userId, itemId, size });
             res.json({ success: true, message: "Item removed from cart" });
         } else {
             res.json({ success: false, message: "Item not found in cart" });
         }
     } catch (error) {
-        logger.error('Remove from cart failed', { requestId, error: error.message });
+        logger.error('Remove from cart failed', { traceId, error: error.message });
         res.json({ success: false, message: error.message });
     }
 };

@@ -5,10 +5,11 @@ import logger from '../utils/logger.js';
 import { KEYS, TTL, cacheGet, cacheSet, cacheDel, CHANNELS } from '../utils/cache.js';
 import { publish } from '../utils/pubsub.js';
 import svc from '../utils/serviceLogger.js';
+import { RC, getUserMessage } from '../utils/responseCodes.js';
 
 const addProduct = async (req, res) => {
     const { requestId, traceId } = req;
-    if (req.fileSizeError) return res.status(400).json({ success: false, message: "One or more images are too large. Maximum allowed size is 2MB per image." });
+    if (req.fileSizeError) return res.status(400).json({ success: false, message: getUserMessage(RC.UPL_02.code), requestId });
     try {
         const { name, description, price, category, subCategory, sizes, bestseller, sizeStocks } = req.body;
         const image1 = req.files.image1 && req.files.image1[0];
@@ -51,14 +52,15 @@ const addProduct = async (req, res) => {
         await cacheDel(KEYS.productList());
         await publish(CHANNELS.PRODUCT_UPDATED, { action: 'added', productId: product._id, name });
         eventLogger.product.added({
-            traceId, productId: product._id, name, category,
+            requestId, traceId, productId: product._id, name, category,
             subCategory, price: Number(price), totalStock: totalStockQuantity,
             imageCount: imagesUrl.length, addedBy: 'admin',
+            responseCode: RC.PRD_00.code, responseMessage: RC.PRD_00.message,
         });
         res.json({ success: true, message: "Product added" });
     } catch (error) {
-        logger.error('Add product failed', { traceId, error: error.message });
-        res.json({ success: false, message: error.message });
+        logger.error('Add product failed', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
@@ -67,21 +69,19 @@ const listProducts = async (req, res) => {
     try {
         const cached = await cacheGet(KEYS.productList());
         if (cached) return res.json({ success: true, products: cached });
-
         const products = await svc.db(traceId, 'find', 'products', () =>
             productModel.find({})
         );
         const formattedProducts = products.map(product => ({
             ...product.toObject(),
             sizeStock: product.sizeStock instanceof Map
-                ? Object.fromEntries(product.sizeStock)
-                : product.sizeStock || {}
+                ? Object.fromEntries(product.sizeStock) : product.sizeStock || {}
         }));
         await cacheSet(KEYS.productList(), formattedProducts, TTL.PRODUCT_LIST);
         res.json({ success: true, products: formattedProducts });
     } catch (error) {
-        logger.error('List products failed', { traceId, error: error.message });
-        res.json({ success: false, message: error.message });
+        logger.error('List products failed', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
@@ -94,11 +94,11 @@ const removeProduct = async (req, res) => {
         await cacheDel(KEYS.productList());
         await cacheDel(KEYS.product(req.body.id));
         await publish(CHANNELS.PRODUCT_DELETED, { productId: req.body.id, productName: product?.name });
-        eventLogger.product.deleted({ requestId, traceId, productId: req.body.id, productName: product?.name, deletedBy: 'admin' });
+        eventLogger.product.deleted({ requestId, traceId, productId: req.body.id, productName: product?.name, deletedBy: 'admin', responseCode: RC.PRD_02.code, responseMessage: RC.PRD_02.message });
         res.json({ success: true, message: "product removed" });
     } catch (error) {
-        logger.error('Remove product failed', { traceId, error: error.message });
-        res.json({ success: false, message: error.message });
+        logger.error('Remove product failed', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
@@ -108,11 +108,10 @@ const singleProduct = async (req, res) => {
         const { productId } = req.body;
         const cached = await cacheGet(KEYS.product(productId));
         if (cached) return res.json({ success: true, product: cached });
-
         const product = await svc.db(traceId, 'findById', 'products', () =>
             productModel.findById(productId)
         );
-        if (!product) return res.json({ success: false, message: 'Product not found' });
+        if (!product) return res.json({ success: false, message: getUserMessage(RC.PRD_03.code), requestId });
         const formattedProduct = {
             ...product.toObject(),
             sizeStock: product.sizeStock instanceof Map
@@ -121,8 +120,8 @@ const singleProduct = async (req, res) => {
         await cacheSet(KEYS.product(productId), formattedProduct, TTL.SINGLE_PRODUCT);
         res.json({ success: true, product: formattedProduct });
     } catch (error) {
-        logger.error('Get single product failed', { traceId, error: error.message });
-        res.json({ success: false, message: error.message });
+        logger.error('Get single product failed', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
@@ -130,20 +129,20 @@ const updateStock = async (req, res) => {
     const { requestId, traceId } = req;
     try {
         const { productId, quantity, size } = req.body;
-        if (!productId) return res.json({ success: false, message: "Product ID is required" });
-        if (!size) return res.json({ success: false, message: "Size parameter is required." });
-        if (quantity === undefined || quantity === null || isNaN(quantity)) return res.json({ success: false, message: "Valid quantity is required" });
+        if (!productId) return res.json({ success: false, message: getUserMessage(RC.VAL_01.code), requestId });
+        if (!size) return res.json({ success: false, message: getUserMessage(RC.VAL_01.code), requestId });
+        if (quantity === undefined || quantity === null || isNaN(quantity)) return res.json({ success: false, message: getUserMessage(RC.VAL_03.code), requestId });
 
         const product = await svc.db(traceId, 'findById', 'products', () =>
             productModel.findById(productId)
         );
-        if (!product) return res.json({ success: false, message: "Product not found" });
-        if (!product.sizes.includes(size)) return res.json({ success: false, message: `Size ${size} is not available. Available: ${product.sizes.join(', ')}` });
+        if (!product) return res.json({ success: false, message: getUserMessage(RC.PRD_03.code), requestId });
+        if (!product.sizes.includes(size)) return res.json({ success: false, message: `Size ${size} is not available. Available: ${product.sizes.join(', ')}`, requestId });
 
         let currentSizeStock = product.sizeStock instanceof Map
             ? product.sizeStock.get(size) || 0 : product.sizeStock?.[size] || 0;
         const newSizeStock = currentSizeStock + parseInt(quantity);
-        if (newSizeStock < 0) return res.json({ success: false, message: `Cannot reduce stock below zero. Current: ${currentSizeStock}` });
+        if (newSizeStock < 0) return res.json({ success: false, message: `Cannot reduce stock below zero. Current: ${currentSizeStock}`, requestId });
 
         await svc.db(traceId, 'findByIdAndUpdate', 'products', () =>
             productModel.findByIdAndUpdate(productId, { $set: { [`sizeStock.${size}`]: newSizeStock } })
@@ -168,12 +167,13 @@ const updateStock = async (req, res) => {
             previousStock: currentSizeStock, newStock: newSizeStock, totalStock,
         });
         eventLogger.product.stockUpdated({
-            traceId, productId, productName: product.name, size,
+            requestId, traceId, productId, productName: product.name, size,
             previousStock: currentSizeStock, newStock: newSizeStock,
             change: parseInt(quantity), totalStock, updatedBy: 'admin',
+            responseCode: RC.STK_00.code, responseMessage: RC.STK_00.message,
         });
-        if (newSizeStock === 0) eventLogger.product.lowStock({ requestId, traceId, productId, productName: product.name, size, stock: 0, alert: 'out_of_stock' });
-        else if (newSizeStock <= 10) eventLogger.product.lowStock({ requestId, traceId, productId, productName: product.name, size, stock: newSizeStock, alert: 'low_stock' });
+        if (newSizeStock === 0) eventLogger.product.lowStock({ requestId, traceId, productId, productName: product.name, size, stock: 0, alert: 'out_of_stock', responseCode: RC.STK_04.code, responseMessage: RC.STK_04.message });
+        else if (newSizeStock <= 10) eventLogger.product.lowStock({ requestId, traceId, productId, productName: product.name, size, stock: newSizeStock, alert: 'low_stock', responseCode: RC.STK_03.code, responseMessage: RC.STK_03.message });
 
         const finalProduct = await svc.db(traceId, 'findById', 'products', () =>
             productModel.findById(productId)
@@ -187,8 +187,8 @@ const updateStock = async (req, res) => {
             newSizeStock, changeAmount: parseInt(quantity)
         });
     } catch (error) {
-        logger.error('Update stock failed', { traceId, error: error.message });
-        res.json({ success: false, message: error.message });
+        logger.error('Update stock failed', { traceId, error: error.message, responseCode: RC.STK_02.code, responseMessage: RC.STK_02.message });
+        res.json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
@@ -200,7 +200,7 @@ const updateProduct = async (req, res) => {
         const existingProduct = await svc.db(traceId, 'findById', 'products', () =>
             productModel.findById(productId)
         );
-        if (!existingProduct) return res.json({ success: false, message: "Product not found" });
+        if (!existingProduct) return res.json({ success: false, message: getUserMessage(RC.PRD_03.code), requestId });
 
         let newImages = [];
         if (req.files) {
@@ -244,7 +244,7 @@ const updateProduct = async (req, res) => {
         await cacheDel(KEYS.product(productId));
         await cacheDel(KEYS.productList());
         await publish(CHANNELS.PRODUCT_UPDATED, { action: 'updated', productId, productName: name });
-        eventLogger.product.updated({ requestId, traceId, productId, productName: name, updatedFields: Object.keys(updateData), updatedBy: 'admin' });
+        eventLogger.product.updated({ requestId, traceId, productId, productName: name, updatedFields: Object.keys(updateData), updatedBy: 'admin', responseCode: RC.PRD_01.code, responseMessage: RC.PRD_01.message });
 
         const formattedProduct = {
             ...updatedProduct.toObject(),
@@ -253,8 +253,8 @@ const updateProduct = async (req, res) => {
         };
         res.json({ success: true, message: "Product updated successfully", product: formattedProduct });
     } catch (error) {
-        logger.error('Update product failed', { traceId, error: error.message, stack: error.stack });
-        res.json({ success: false, message: error.message });
+        logger.error('Update product failed', { traceId, error: error.message, stack: error.stack, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 

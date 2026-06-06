@@ -12,20 +12,21 @@ import { publish } from "../utils/pubsub.js";
 import orderQueue from "../queues/orderQueue.js";
 import { sendEmail } from "../queues/emailQueue.js";
 import svc from "../utils/serviceLogger.js";
+import { RC, getUserMessage } from "../utils/responseCodes.js";
 
 const currency = 'ngn'
 const deliveryCharge = 10
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 const paystack = Paystack(process.env.PAYSTACK_SECRET_KEY);
 
-const updateProductStock = async (items, traceId = null) => {
+const updateProductStock = async (items, traceId = null, requestId = null) => {
     try {
         for (const item of items) {
             const product = await svc.db(traceId, 'findById', 'products', () =>
                 productModel.findById(item._id)
             );
             if (!product) {
-                logger.warn('Product not found during stock update', { traceId, productId: item._id });
+                logger.warn('Product not found during stock update', { traceId, productId: item._id, responseCode: RC.PRD_03.code, responseMessage: RC.PRD_03.message });
                 continue;
             }
             const currentSizeStock = product.sizeStock instanceof Map
@@ -60,19 +61,20 @@ const updateProductStock = async (items, traceId = null) => {
             });
 
             eventLogger.product.stockUpdated({
-                traceId, productId: item._id, productName: product.name,
+                requestId, traceId, productId: item._id, productName: product.name,
                 size: item.size, previousStock: currentSizeStock,
                 newStock: newSizeStock, totalStock,
+                responseCode: RC.STK_00.code, responseMessage: RC.STK_00.message,
             });
 
             if (newSizeStock === 0) {
-                eventLogger.product.lowStock({ requestId, traceId, productId: item._id, productName: product.name, size: item.size, stock: 0, alert: 'out_of_stock' });
+                eventLogger.product.lowStock({ requestId, traceId, productId: item._id, productName: product.name, size: item.size, stock: 0, alert: 'out_of_stock', responseCode: RC.STK_04.code, responseMessage: RC.STK_04.message });
                 if (process.env.NOTIFY_EMAIL) {
                     await sendEmail(process.env.NOTIFY_EMAIL, 'Out of Stock Alert', getStockAlertEmail(product, item.size, newSizeStock, 'out'), 'stock_alert')
-                        .catch(err => logger.error('Stock alert email failed', { traceId, error: err.message }));
+                        .catch(err => logger.error('Stock alert email failed', { traceId, error: err.message, responseCode: RC.EMAIL_01 ? RC.EMAIL_01.code : RC.SYS_01.code }));
                 }
             } else if (newSizeStock <= 10) {
-                eventLogger.product.lowStock({ requestId, traceId, productId: item._id, productName: product.name, size: item.size, stock: newSizeStock, alert: 'low_stock' });
+                eventLogger.product.lowStock({ requestId, traceId, productId: item._id, productName: product.name, size: item.size, stock: newSizeStock, alert: 'low_stock', responseCode: RC.STK_03.code, responseMessage: RC.STK_03.message });
                 if (process.env.NOTIFY_EMAIL) {
                     await sendEmail(process.env.NOTIFY_EMAIL, 'Low Stock Alert', getStockAlertEmail(product, item.size, newSizeStock, 'low'), 'stock_alert')
                         .catch(err => logger.error('Stock alert email failed', { traceId, error: err.message }));
@@ -80,7 +82,7 @@ const updateProductStock = async (items, traceId = null) => {
             }
         }
     } catch (error) {
-        logger.error('Error updating stock', { traceId, error: error.message, stack: error.stack });
+        logger.error('Error updating stock', { traceId, error: error.message, stack: error.stack, responseCode: RC.STK_02.code, responseMessage: RC.STK_02.message });
         throw error;
     }
 };
@@ -122,10 +124,10 @@ const restoreProductStock = async (items, traceId = null) => {
                 newStock: restoredSizeStock, totalStock,
             });
 
-            logger.info('Stock restored', { traceId, productId: item._id, size: item.size, restored: item.quantity });
+            logger.info('Stock restored', { traceId, productId: item._id, size: item.size, restored: item.quantity, responseCode: RC.STK_00.code, responseMessage: RC.STK_00.message });
         }
     } catch (error) {
-        logger.error('Error restoring stock', { traceId, error: error.message });
+        logger.error('Error restoring stock', { traceId, error: error.message, responseCode: RC.STK_02.code, responseMessage: RC.STK_02.message });
         throw error;
     }
 };
@@ -150,7 +152,7 @@ const placeOrder = async (req, res) => {
     try {
         const { userId, items, amount, address } = req.body;
         await validateStockAvailability(items, traceId);
-        await updateProductStock(items, traceId);
+        await updateProductStock(items, traceId, requestId);
 
         const newOrder = await svc.db(traceId, 'save', 'orders', async () => {
             const order = new orderModel({ userId, items, address, amount, paymentMethod: "COD", payment: false });
@@ -164,16 +166,17 @@ const placeOrder = async (req, res) => {
         );
 
         eventLogger.order.placed({
-            traceId, orderId: newOrder._id, userId,
+            requestId, traceId, orderId: newOrder._id, userId,
             amount, itemCount: items.length, paymentMethod: 'COD',
             address: { city: address.city, country: address.country },
+            responseCode: RC.ORD_00.code, responseMessage: RC.ORD_00.message,
         });
 
         await orderQueue.add({ type: 'order_confirmed', orderId: newOrder._id, userId });
         res.json({ success: true, message: "Order Placed" });
     } catch (error) {
-        logger.error('COD order failed', { traceId, error: error.message, userId: req.body?.userId });
-        res.json({ success: false, message: error.message });
+        logger.error('COD order failed', { traceId, error: error.message, userId: req.body?.userId, responseCode: RC.ORD_02.code, responseMessage: RC.ORD_02.message });
+        res.json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
@@ -183,7 +186,7 @@ const placeOrderStripe = async (req, res) => {
         const { userId, items, amount, address } = req.body;
         const { origin } = req.headers;
         await validateStockAvailability(items, traceId);
-        await updateProductStock(items, traceId);
+        await updateProductStock(items, traceId, requestId);
 
         const newOrder = await svc.db(traceId, 'save', 'orders', async () => {
             const order = new orderModel({ userId, items, address, amount, paymentMethod: "Stripe", payment: false });
@@ -191,7 +194,7 @@ const placeOrderStripe = async (req, res) => {
             return order;
         });
 
-        eventLogger.order.paymentInitiated({ requestId, traceId, orderId: newOrder._id, userId, amount, provider: 'stripe' });
+        eventLogger.order.paymentInitiated({ requestId, traceId, orderId: newOrder._id, userId, amount, provider: 'stripe', responseCode: RC.PAY_00.code, responseMessage: RC.PAY_00.message });
 
         const line_items = items.map((item) => ({
             price_data: { currency, product_data: { name: item.name }, unit_amount: item.price * 100 },
@@ -213,8 +216,8 @@ const placeOrderStripe = async (req, res) => {
 
         res.json({ success: true, session_url: session.url });
     } catch (error) {
-        eventLogger.order.paymentFailed({ requestId, traceId, error: error.message, provider: 'stripe', userId: req.body?.userId });
-        res.json({ success: false, message: error.message });
+        eventLogger.order.paymentFailed({ requestId, traceId, error: error.message, provider: 'stripe', userId: req.body?.userId, responseCode: RC.PAY_02.code, responseMessage: RC.PAY_02.message });
+        res.json({ success: false, message: getUserMessage(RC.PAY_02.code), requestId });
     }
 };
 
@@ -229,7 +232,7 @@ const verifyStripe = async (req, res) => {
             const order = await svc.db(traceId, 'findById', 'orders', () =>
                 orderModel.findById(orderId)
             );
-            eventLogger.order.paymentSuccess({ requestId, traceId, orderId, userId, provider: 'stripe', amount: order.amount });
+            eventLogger.order.paymentSuccess({ requestId, traceId, orderId, userId, provider: 'stripe', amount: order.amount, responseCode: RC.PAY_01.code, responseMessage: RC.PAY_01.message });
             await cacheDel(KEYS.cart(userId));
             await svc.db(traceId, 'findByIdAndUpdate', 'users', () =>
                 userModel.findByIdAndUpdate(userId, { cartData: {} })
@@ -244,12 +247,12 @@ const verifyStripe = async (req, res) => {
             await svc.db(traceId, 'findByIdAndDelete', 'orders', () =>
                 orderModel.findByIdAndDelete(orderId)
             );
-            eventLogger.order.paymentFailed({ requestId, traceId, orderId, userId, provider: 'stripe', reason: 'user_cancelled' });
+            eventLogger.order.paymentFailed({ requestId, traceId, orderId, userId, provider: 'stripe', reason: 'user_cancelled', responseCode: RC.PAY_05.code, responseMessage: RC.PAY_05.message });
             res.json({ success: false });
         }
     } catch (error) {
-        logger.error('Stripe verification failed', { traceId, orderId, error: error.message });
-        res.json({ success: false, message: error.message });
+        logger.error('Stripe verification failed', { traceId, orderId, error: error.message, responseCode: RC.PAY_03.code, responseMessage: RC.PAY_03.message });
+        res.json({ success: false, message: getUserMessage(RC.PAY_03.code), requestId });
     }
 };
 
@@ -259,7 +262,7 @@ const placeOrderPaystack = async (req, res) => {
         const { userId, items, amount, address } = req.body;
         const { origin } = req.headers;
         await validateStockAvailability(items, traceId);
-        await updateProductStock(items, traceId);
+        await updateProductStock(items, traceId, requestId);
 
         const newOrder = await svc.db(traceId, 'save', 'orders', async () => {
             const order = new orderModel({ userId, items, address, amount, paymentMethod: "Paystack", payment: false });
@@ -267,7 +270,7 @@ const placeOrderPaystack = async (req, res) => {
             return order;
         });
 
-        eventLogger.order.paymentInitiated({ requestId, traceId, orderId: newOrder._id, userId, amount, provider: 'paystack' });
+        eventLogger.order.paymentInitiated({ requestId, traceId, orderId: newOrder._id, userId, amount, provider: 'paystack', responseCode: RC.PAY_00.code, responseMessage: RC.PAY_00.message });
 
         const transaction = await svc.external(traceId, 'paystack', 'transaction.initialize', () =>
             paystack.transaction.initialize({
@@ -283,8 +286,8 @@ const placeOrderPaystack = async (req, res) => {
 
         res.json({ success: true, authorization_url: transaction.data.authorization_url });
     } catch (error) {
-        eventLogger.order.paymentFailed({ requestId, traceId, error: error.message, provider: 'paystack', userId: req.body?.userId });
-        res.json({ success: false, message: error.message });
+        eventLogger.order.paymentFailed({ requestId, traceId, error: error.message, provider: 'paystack', userId: req.body?.userId, responseCode: RC.PAY_02.code, responseMessage: RC.PAY_02.message });
+        res.json({ success: false, message: getUserMessage(RC.PAY_02.code), requestId });
     }
 };
 
@@ -304,7 +307,7 @@ const verifyPaystack = async (req, res) => {
             const order = await svc.db(traceId, 'findById', 'orders', () =>
                 orderModel.findById(orderId)
             );
-            eventLogger.order.paymentSuccess({ requestId, traceId, orderId, provider: 'paystack', amount: order.amount, reference });
+            eventLogger.order.paymentSuccess({ requestId, traceId, orderId, provider: 'paystack', amount: order.amount, reference, responseCode: RC.PAY_01.code, responseMessage: RC.PAY_01.message });
             await cacheDel(KEYS.cart(order.userId));
             await svc.db(traceId, 'findByIdAndUpdate', 'users', () =>
                 userModel.findByIdAndUpdate(order.userId, { cartData: {} })
@@ -319,12 +322,12 @@ const verifyPaystack = async (req, res) => {
             await svc.db(traceId, 'findByIdAndDelete', 'orders', () =>
                 orderModel.findByIdAndDelete(orderId)
             );
-            eventLogger.order.paymentFailed({ requestId, traceId, orderId, provider: 'paystack', reason: 'verification_failed', reference });
+            eventLogger.order.paymentFailed({ requestId, traceId, orderId, provider: 'paystack', reason: 'verification_failed', reference, responseCode: RC.PAY_03.code, responseMessage: RC.PAY_03.message });
             res.json({ success: false });
         }
     } catch (error) {
-        logger.error('Paystack verification failed', { traceId, orderId, error: error.message });
-        res.json({ success: false, message: error.message });
+        logger.error('Paystack verification failed', { traceId, orderId, error: error.message, responseCode: RC.PAY_03.code, responseMessage: RC.PAY_03.message });
+        res.json({ success: false, message: getUserMessage(RC.PAY_03.code), requestId });
     }
 };
 
@@ -337,8 +340,8 @@ const allOrders = async (req, res) => {
         eventLogger.admin.orderManaged({ requestId, traceId, action: 'view_all_orders', count: orders.length });
         res.json({ success: true, orders });
     } catch (error) {
-        logger.error('Failed to fetch all orders', { traceId, error: error.message });
-        res.json({ success: false, message: error.message });
+        logger.error('Failed to fetch all orders', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
@@ -351,8 +354,8 @@ const userOrders = async (req, res) => {
         );
         res.json({ success: true, orders });
     } catch (error) {
-        logger.error('Failed to fetch user orders', { traceId, error: error.message });
-        res.json({ success: false, message: error.message });
+        logger.error('Failed to fetch user orders', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
@@ -363,7 +366,7 @@ const updateStatus = async (req, res) => {
         await svc.db(traceId, 'findByIdAndUpdate', 'orders', () =>
             orderModel.findByIdAndUpdate(orderId, { status })
         );
-        eventLogger.order.statusUpdated({ requestId, traceId, orderId, status, updatedBy: req.body?.adminId || 'admin' });
+        eventLogger.order.statusUpdated({ requestId, traceId, orderId, status, updatedBy: req.body?.adminId || 'admin', responseCode: RC.ORD_01.code, responseMessage: RC.ORD_01.message });
 
         const order = await svc.db(traceId, 'findById', 'orders', () =>
             orderModel.findById(orderId)
@@ -376,13 +379,13 @@ const updateStatus = async (req, res) => {
                     subject = emailHtml.split('<title>')[1].split('</title>')[0];
                 }
                 await sendEmail(order.address.email, subject, emailHtml, 'status_update')
-                    .catch(err => eventLogger.system.emailError({ requestId, traceId, error: err.message, type: 'status_update' }));
+                    .catch(err => eventLogger.system.emailError({ traceId, error: err.message, type: 'status_update' }));
             }
         }
         res.json({ success: true, message: "Status Updated" });
     } catch (error) {
-        logger.error('Failed to update order status', { traceId, error: error.message });
-        res.json({ success: false, message: "Error" });
+        logger.error('Failed to update order status', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
@@ -396,8 +399,8 @@ const updatePaymentStatus = async (req, res) => {
         logger.info('Payment status updated manually', { traceId, orderId, payment, updatedBy: 'admin' });
         res.json({ success: true, message: "Payment status updated successfully" });
     } catch (error) {
-        logger.error('Failed to update payment status', { traceId, error: error.message });
-        res.json({ success: false, message: "Error updating payment status" });
+        logger.error('Failed to update payment status', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 

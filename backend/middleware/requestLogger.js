@@ -20,7 +20,6 @@ const maskSensitiveData = (obj) => {
   return masked;
 };
 
-// Extract userId from JWT without full validation — just for logging
 const extractUserId = (req) => {
   try {
     const token = req.headers.token;
@@ -36,15 +35,19 @@ const requestLogger = (req, res, next) => {
   if (req.url.startsWith('/health/')) return next();
 
   const requestId = uuidv4();
+  const traceId = uuidv4();
   const startTime = Date.now();
   const userId = extractUserId(req);
 
+  // Same UUID for both — different search scopes
   req.requestId = requestId;
+  req.traceId = traceId;
   res.setHeader('X-Request-ID', requestId);
 
   logger.http('Incoming request', {
-    type: 'request',
     requestId,
+    traceId,
+    type: 'request',
     method: req.method,
     url: req.originalUrl,
     ip: req.ip || req.connection.remoteAddress,
@@ -75,12 +78,12 @@ const requestLogger = (req, res, next) => {
                 : res.statusCode >= 400 ? 'warn'
                 : 'http';
 
-    // Use userId from auth middleware if available, fallback to JWT extract
     const finalUserId = req.body?.userId || userId;
 
     logger[level]('Request completed', {
-      type: 'response',
       requestId,
+      traceId,
+      type: 'response',
       method: req.method,
       url: req.originalUrl,
       statusCode: res.statusCode,
@@ -93,6 +96,7 @@ const requestLogger = (req, res, next) => {
     if (responseTime > 2000) {
       logger.warn('Slow request detected', {
         requestId,
+        traceId,
         url: req.originalUrl,
         method: req.method,
         responseTime: `${responseTime}ms`,

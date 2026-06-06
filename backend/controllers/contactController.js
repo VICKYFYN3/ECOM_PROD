@@ -5,27 +5,25 @@ import logger from '../utils/logger.js';
 import eventLogger from '../utils/eventLogger.js';
 import svc from '../utils/serviceLogger.js';
 import { sendEmail } from '../queues/emailQueue.js';
+import { RC, getUserMessage } from '../utils/responseCodes.js';
 
 const createContactMessage = async (req, res) => {
     const { requestId, traceId } = req;
     try {
         const { subject, message, priority } = req.body;
         const userId = req.body.userId;
-        if (!userId) return res.status(401).json({ success: false, message: 'User not authenticated' });
-        const user = await svc.db(traceId, 'findById', 'users', () =>
-            User.findById(userId)
-        );
-        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+        if (!userId) return res.status(401).json({ success: false, message: getUserMessage(RC.AUTH_05.code), requestId });
+        const user = await svc.db(traceId, 'findById', 'users', () => User.findById(userId));
+        if (!user) return res.status(404).json({ success: false, message: getUserMessage(RC.USR_03.code), requestId });
         const contactMessage = await svc.db(traceId, 'save', 'contacts', async () => {
             const c = new Contact({ name: user.name, email: user.email, subject, message, priority, userId });
             await c.save();
             return c;
         });
-        logger.info('Contact message created', { traceId, userId, subject, priority, messageId: contactMessage._id });
         res.status(201).json({ success: true, message: 'Contact message sent successfully', data: contactMessage });
     } catch (error) {
-        logger.error('Create contact message failed', { traceId, error: error.message });
-        res.status(500).json({ success: false, message: 'Failed to send contact message' });
+        logger.error('Create contact message failed', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.status(500).json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
@@ -41,17 +39,14 @@ const getAllContactMessages = async (req, res) => {
             Contact.find(query).populate('userId', 'name email').populate('respondedBy', 'name')
                 .sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit))
         );
-        const total = await svc.db(traceId, 'countDocuments', 'contacts', () =>
-            Contact.countDocuments(query)
-        );
-        logger.info('Admin fetched contact messages', { traceId, total, page, filters: { status, priority } });
+        const total = await svc.db(traceId, 'countDocuments', 'contacts', () => Contact.countDocuments(query));
         res.json({ success: true, data: messages, pagination: {
             currentPage: parseInt(page), totalPages: Math.ceil(total / limit),
             totalMessages: total, hasNext: page * limit < total, hasPrev: page > 1
         }});
     } catch (error) {
-        logger.error('Get all contact messages failed', { traceId, error: error.message });
-        res.status(500).json({ success: false, message: 'Failed to fetch contact messages' });
+        logger.error('Get all contact messages failed', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.status(500).json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
@@ -62,11 +57,11 @@ const getContactMessageById = async (req, res) => {
         const message = await svc.db(traceId, 'findById', 'contacts', () =>
             Contact.findById(id).populate('userId', 'name email').populate('respondedBy', 'name')
         );
-        if (!message) return res.status(404).json({ success: false, message: 'Contact message not found' });
+        if (!message) return res.status(404).json({ success: false, message: 'Contact message not found', requestId });
         res.json({ success: true, data: message });
     } catch (error) {
-        logger.error('Get contact message by ID failed', { traceId, error: error.message });
-        res.status(500).json({ success: false, message: 'Failed to fetch contact message' });
+        logger.error('Get contact message by ID failed', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.status(500).json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
@@ -76,10 +71,8 @@ const updateContactStatus = async (req, res) => {
         const { id } = req.params;
         const { status, adminResponse } = req.body;
         const adminId = req.body.userId;
-        const message = await svc.db(traceId, 'findById', 'contacts', () =>
-            Contact.findById(id)
-        );
-        if (!message) return res.status(404).json({ success: false, message: 'Contact message not found' });
+        const message = await svc.db(traceId, 'findById', 'contacts', () => Contact.findById(id));
+        if (!message) return res.status(404).json({ success: false, message: 'Contact message not found', requestId });
         const updateData = { status };
         if (adminResponse) {
             updateData.adminResponse = adminResponse;
@@ -97,18 +90,17 @@ const updateContactStatus = async (req, res) => {
                     <p>Thank you for contacting us.<br>Best regards,<br>The Support Team</p>
                 </div>
             `, 'contact_response').catch(err =>
-                eventLogger.system.emailError({ requestId, traceId, error: err.message, type: 'contact_response' })
+                eventLogger.system.emailError({ traceId, error: err.message, type: 'contact_response' })
             );
         }
         const updatedMessage = await svc.db(traceId, 'findByIdAndUpdate', 'contacts', () =>
             Contact.findByIdAndUpdate(id, updateData, { new: true })
                 .populate('userId', 'name email').populate('respondedBy', 'name')
         );
-        logger.info('Contact message status updated', { traceId, messageId: id, status, hasResponse: !!adminResponse, updatedBy: adminId });
         res.json({ success: true, message: 'Contact message updated successfully', data: updatedMessage });
     } catch (error) {
-        logger.error('Update contact status failed', { traceId, error: error.message });
-        res.status(500).json({ success: false, message: 'Failed to update contact message' });
+        logger.error('Update contact status failed', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.status(500).json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
@@ -121,16 +113,12 @@ const getContactStats = async (req, res) => {
         const priorityStats = await svc.db(traceId, 'aggregate', 'contacts', () =>
             Contact.aggregate([{ $group: { _id: '$priority', count: { $sum: 1 } } }])
         );
-        const totalMessages = await svc.db(traceId, 'countDocuments', 'contacts', () =>
-            Contact.countDocuments()
-        );
-        const newMessages = await svc.db(traceId, 'countDocuments', 'contacts', () =>
-            Contact.countDocuments({ status: 'new' })
-        );
+        const totalMessages = await svc.db(traceId, 'countDocuments', 'contacts', () => Contact.countDocuments());
+        const newMessages = await svc.db(traceId, 'countDocuments', 'contacts', () => Contact.countDocuments({ status: 'new' }));
         res.json({ success: true, data: { totalMessages, newMessages, statusBreakdown: stats, priorityBreakdown: priorityStats } });
     } catch (error) {
-        logger.error('Get contact stats failed', { traceId, error: error.message });
-        res.status(500).json({ success: false, message: 'Failed to fetch contact statistics' });
+        logger.error('Get contact stats failed', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.status(500).json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
@@ -138,14 +126,12 @@ const getUserContactMessages = async (req, res) => {
     const { requestId, traceId } = req;
     try {
         const userId = req.body.userId;
-        if (!userId) return res.status(401).json({ success: false, message: 'User not authenticated' });
-        const messages = await svc.db(traceId, 'find', 'contacts', () =>
-            Contact.find({ userId }).sort({ createdAt: -1 })
-        );
+        if (!userId) return res.status(401).json({ success: false, message: getUserMessage(RC.AUTH_05.code), requestId });
+        const messages = await svc.db(traceId, 'find', 'contacts', () => Contact.find({ userId }).sort({ createdAt: -1 }));
         res.json({ success: true, data: messages });
     } catch (error) {
-        logger.error('Get user contact messages failed', { traceId, error: error.message });
-        res.status(500).json({ success: false, message: 'Failed to fetch contact messages' });
+        logger.error('Get user contact messages failed', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.status(500).json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 

@@ -3,6 +3,7 @@ import orderModel from '../models/orderModel.js';
 import productModel from '../models/productModel.js';
 import logger from '../utils/logger.js';
 import svc from '../utils/serviceLogger.js';
+import { RC, getUserMessage } from '../utils/responseCodes.js';
 
 const getUserReviews = async (req, res) => {
     const { requestId, traceId } = req;
@@ -16,8 +17,8 @@ const getUserReviews = async (req, res) => {
         }));
         res.json({ success: true, reviews: transformedReviews });
     } catch (error) {
-        logger.error('Get user reviews failed', { traceId, error: error.message });
-        res.json({ success: false, message: error.message });
+        logger.error('Get user reviews failed', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
@@ -28,18 +29,17 @@ const addReview = async (req, res) => {
         const existingReview = await svc.db(traceId, 'findOne', 'reviews', () =>
             reviewModel.findOne({ userId: req.body.userId, productId })
         );
-        if (existingReview) return res.json({ success: false, message: 'You have already reviewed this product' });
+        if (existingReview) return res.json({ success: false, message: 'You have already reviewed this product', requestId });
         const newReview = await svc.db(traceId, 'save', 'reviews', async () => {
             const r = new reviewModel({ userId: req.body.userId, productId, rating });
             await r.save();
             return r;
         });
         await updateProductRating(productId, traceId);
-        logger.info('Review added', { traceId, userId: req.body.userId, productId, rating });
         res.json({ success: true, review: newReview });
     } catch (error) {
-        logger.error('Add review failed', { traceId, error: error.message });
-        res.json({ success: false, message: error.message });
+        logger.error('Add review failed', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
@@ -51,11 +51,10 @@ const updateReview = async (req, res) => {
             reviewModel.findByIdAndUpdate(reviewId, { rating }, { new: true })
         );
         await updateProductRating(updatedReview.productId, traceId);
-        logger.info('Review updated', { traceId, reviewId, rating, userId: req.body.userId });
         res.json({ success: true, review: updatedReview });
     } catch (error) {
-        logger.error('Update review failed', { traceId, error: error.message });
-        res.json({ success: false, message: error.message });
+        logger.error('Update review failed', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
@@ -63,19 +62,14 @@ const deleteReview = async (req, res) => {
     const { requestId, traceId } = req;
     try {
         const { reviewId } = req.body;
-        const review = await svc.db(traceId, 'findById', 'reviews', () =>
-            reviewModel.findById(reviewId)
-        );
-        if (!review) return res.json({ success: false, message: 'Review not found' });
-        await svc.db(traceId, 'findByIdAndDelete', 'reviews', () =>
-            reviewModel.findByIdAndDelete(reviewId)
-        );
+        const review = await svc.db(traceId, 'findById', 'reviews', () => reviewModel.findById(reviewId));
+        if (!review) return res.json({ success: false, message: getUserMessage(RC.RES_05 ? RC.RES_05.code : RC.SYS_01.code), requestId });
+        await svc.db(traceId, 'findByIdAndDelete', 'reviews', () => reviewModel.findByIdAndDelete(reviewId));
         await updateProductRating(review.productId, traceId);
-        logger.info('Review deleted', { traceId, reviewId, userId: req.body.userId, productId: review.productId });
         res.json({ success: true, message: 'Review deleted successfully' });
     } catch (error) {
-        logger.error('Delete review failed', { traceId, error: error.message });
-        res.json({ success: false, message: error.message });
+        logger.error('Delete review failed', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
@@ -101,15 +95,13 @@ const getReviewableProducts = async (req, res) => {
         });
         res.json({ success: true, products: reviewableProducts });
     } catch (error) {
-        logger.error('Get reviewable products failed', { traceId, error: error.message });
-        res.json({ success: false, message: error.message });
+        logger.error('Get reviewable products failed', { traceId, error: error.message, responseCode: RC.SYS_01.code, responseMessage: RC.SYS_01.message });
+        res.json({ success: false, message: getUserMessage(RC.SYS_01.code), requestId });
     }
 };
 
 const updateProductRating = async (productId, traceId = null) => {
-    const reviews = await svc.db(traceId, 'find', 'reviews', () =>
-        reviewModel.find({ productId })
-    );
+    const reviews = await svc.db(traceId, 'find', 'reviews', () => reviewModel.find({ productId }));
     if (reviews.length > 0) {
         const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
         const averageRating = totalRating / reviews.length;

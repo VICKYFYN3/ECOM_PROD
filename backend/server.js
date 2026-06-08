@@ -1,3 +1,5 @@
+import "./instrument.js";
+import * as Sentry from "@sentry/node";
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
@@ -104,6 +106,7 @@ app.get('/', (req, res) => {
 });
 
 // Global error handler
+Sentry.setupExpressErrorHandler(app);
 app.use(errorHandler);
 
 // Start server
